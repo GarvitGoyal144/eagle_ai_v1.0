@@ -1,0 +1,27 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Data and Models (Crucial for Vision AI projects)
+data/videos/*
+data/outputs/*
+data/clips/*
+models/*.pt
+models/*.onnx
+models/*.engine
+
+# Keep the data directories tracked but empty
+!data/videos/.gitkeep
+!data/outputs/.gitkeep
+!data/clips/.gitkeep
+!models/.gitkeep
+
+# Operating System files
+.DS_Store
+Thumbs.db
+.env

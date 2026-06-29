@@ -146,9 +146,9 @@ Eagle AI treats surveillance footage as structured knowledge instead of raw vide
 
 # License
 
-## License
+## 📄 License
 
-This project is free to use for educational, personal, and non-commercial purposes. For commercial use, licensing, or corporate inquiries, please contact [(mailto:garvitgoyal144@gmail.com)].
+This project is free to use for educational, personal, and non-commercial purposes. For commercial use, licensing, or corporate inquiries, please contact **garvitgoyal144@gmail.com**.
 
 ---
 
