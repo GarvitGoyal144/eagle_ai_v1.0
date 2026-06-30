@@ -1,9 +1,12 @@
 import cv2
 
+from app.services.detection_service import detection_service
+
 
 class CameraService:
 
     def __init__(self):
+
         self.camera = cv2.VideoCapture(0)
 
     def generate_frames(self):
@@ -14,6 +17,8 @@ class CameraService:
 
             if not success:
                 break
+
+            frame = detection_service.detect(frame)
 
             _, buffer = cv2.imencode(".jpg", frame)
 
