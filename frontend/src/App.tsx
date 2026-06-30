@@ -59,7 +59,7 @@
 // }
 
 // export default App;
-
+import LiveCamera from "./components/LiveCamera";
 
 import { useEffect, useState } from "react";
 import api from "./api/api";
@@ -78,22 +78,55 @@ function App() {
       });
   }, []);
 
-  return (
-    <div>
-      <h1>Eagle AI</h1>
+return (
 
-      {status ? (
-        <>
-          <p>{status.project}</p>
-          <p>{status.backend}</p>
-          <p>{status.database}</p>
-          <p>{status.status}</p>
-        </>
-      ) : (
-        <p>Connecting...</p>
-      )}
-    </div>
-  );
+<div className="min-h-screen bg-slate-900 text-white p-8">
+
+<h1 className="text-4xl font-bold mb-8">
+🦅 Eagle AI
+</h1>
+
+<div className="grid grid-cols-2 gap-8">
+
+<div>
+
+<h2 className="text-2xl mb-4">
+Live Camera
+</h2>
+
+<LiveCamera/>
+
+</div>
+
+<div>
+
+<h2 className="text-2xl mb-4">
+System Status
+</h2>
+
+{status && (
+
+<div>
+
+<p>Backend : {status.backend}</p>
+
+<p>Database : {status.database}</p>
+
+<p>Version : {status.version}</p>
+
+<p>Status : {status.status}</p>
+
+</div>
+
+)}
+
+</div>
+
+</div>
+
+</div>
+
+);
 }
 
 export default App;
