@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "./api/api";
 import LiveCamera from "./components/LiveCamera";
+import EventTimeline from "./components/EventTimeline";
 
 type SystemStatus = {
   project: string;
@@ -17,7 +18,6 @@ function App() {
     api
       .get("/system/status")
       .then((response) => {
-        console.log(response.data);
         setStatus(response.data);
       })
       .catch((error) => {
@@ -30,37 +30,45 @@ function App() {
       <h1 className="text-4xl font-bold mb-8">🦅 Eagle AI</h1>
 
       <div className="grid grid-cols-2 gap-8">
+        {/* Left Panel */}
         <div>
           <h2 className="text-2xl mb-4">Live Camera</h2>
 
           <LiveCamera />
         </div>
 
+        {/* Right Panel */}
         <div>
           <h2 className="text-2xl mb-4">System Status</h2>
 
           {status ? (
-            <div>
-              <p>
-                <strong>Project:</strong> {status.project}
-              </p>
+            <>
+              <div className="space-y-2">
+                <p>
+                  <strong>Project:</strong> {status.project}
+                </p>
 
-              <p>
-                <strong>Backend:</strong> {status.backend}
-              </p>
+                <p>
+                  <strong>Backend:</strong> {status.backend}
+                </p>
 
-              <p>
-                <strong>Database:</strong> {status.database}
-              </p>
+                <p>
+                  <strong>Database:</strong> {status.database}
+                </p>
 
-              <p>
-                <strong>Version:</strong> {status.version}
-              </p>
+                <p>
+                  <strong>Version:</strong> {status.version}
+                </p>
 
-              <p>
-                <strong>Status:</strong> {status.status}
-              </p>
-            </div>
+                <p>
+                  <strong>Status:</strong> {status.status}
+                </p>
+              </div>
+
+              <hr className="my-6" />
+
+              <EventTimeline />
+            </>
           ) : (
             <p>Connecting...</p>
           )}

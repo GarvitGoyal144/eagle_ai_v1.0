@@ -1,6 +1,8 @@
 import cv2
 
 from app.services.detection_service import detection_service
+from app.services.event_service import event_service
+
 
 
 class CameraService:
@@ -18,7 +20,12 @@ class CameraService:
             if not success:
                 break
 
-            frame = detection_service.detect(frame)
+            frame, detections = detection_service.detect(frame)
+            event_service.save_new_tracks(detections)
+            # asyncio.create_task(event_service.save_detections(detections)
+            
+            
+#)
 
             _, buffer = cv2.imencode(".jpg", frame)
 

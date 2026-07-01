@@ -1,4 +1,4 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 
 from app.config.settings import settings
 
@@ -14,13 +14,13 @@ class MongoDB:
     - Provide database instance
     """
 
-    client: AsyncIOMotorClient | None = None
-
+    client: MongoClient | None = None
     database = None
 
     async def connect(self):
         """Connect to MongoDB."""
-        self.client = AsyncIOMotorClient(settings.MONGO_URI)
+
+        self.client = MongoClient(settings.MONGO_URI)
 
         self.database = self.client[settings.DATABASE_NAME]
 
