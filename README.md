@@ -140,7 +140,7 @@ Our objective is not to build another object detection demo.
 
 Our goal is to build an AI-powered surveillance assistant capable of continuously observing, understanding, remembering, and explaining events occurring in monitored environments.
 
-Eagle AI treats surveillance footage as structured knowledge instead of raw video.
+Eagle AI treats surveillance footage as a structured knowledge base instead of raw video feed.
 
 ---
 
