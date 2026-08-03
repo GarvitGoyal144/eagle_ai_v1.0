@@ -7,7 +7,14 @@ __pycache__/
 venv/
 env/
 
+# Node (frontend only — do not install npm deps in backend/)
+node_modules/
+backend/node_modules/
+
 # Data and Models (Crucial for Vision AI projects)
+*.pt
+*.onnx
+*.engine
 data/videos/*
 data/outputs/*
 data/clips/*

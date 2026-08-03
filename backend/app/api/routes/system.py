@@ -19,7 +19,7 @@ async def system_status():
     }
 
 
-@router.get("/")
+@router.get("")
 async def root():
     return {
         "project": settings.PROJECT_NAME,

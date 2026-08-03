@@ -1,45 +1,52 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+
+from pymongo import TEXT
 
 from app.database.mongodb import mongodb
 
 
 class EventService:
-    """
-    Stores unique tracking events in MongoDB.
-    """
 
-    def __init__(self):
-        self.active_tracks = set()
+    def init_indexes(self):
+        """Ensure text indexes exist for hybrid search."""
+        if mongodb.database is None:
+            return
+        try:
+            mongodb.database.events.create_index(
+                [("class_name", TEXT), ("event_type", TEXT), ("camera", TEXT)],
+                name="text_search_index",
+                background=True,
+            )
+        except Exception as exc:
+            print(f"Index creation note: {exc}")
 
-    def save_new_tracks(self, detections):
-
+    def save_events(self, events):
+        """Save detection/tracking events to MongoDB."""
         if mongodb.database is None:
             return
 
-        for detection in detections:
+        for event in events:
+            event["event_id"] = str(uuid.uuid4())
+            mongodb.database.events.insert_one(event)
+            print(f"✅ {event['event_type']}  Track #{event['track_id']}")
 
-            track_id = detection["track_id"]
+    def save_scene_embedding(self, embedding, timestamp: float):
+        """
+        Save a scene embedding snapshot to MongoDB.
+        These are full-frame embeddings captured every N seconds.
+        """
+        if mongodb.database is None:
+            return
 
-            if track_id in self.active_tracks:
-                continue
+        doc = {
+            "snapshot_id": str(uuid.uuid4()),
+            "embedding": embedding.tolist(),
+            "camera": "webcam",
+            "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc),
+        }
 
-            self.active_tracks.add(track_id)
-
-            document = {
-                "event_id": str(uuid.uuid4()),
-                "track_id": track_id,
-                "class_id": detection["class_id"],
-                "class_name": detection["class_name"],
-                "confidence": detection["confidence"],
-                "bbox": detection["bbox"],
-                "camera": "webcam",
-                "timestamp": datetime.utcnow(),
-            }
-
-            mongodb.database.events.insert_one(document)
-
-            print(f"✅ New Event Saved: {detection['class_name']} #{track_id}")
+        mongodb.database.scene_embeddings.insert_one(doc)
 
 
 event_service = EventService()

@@ -8,8 +8,8 @@ router = APIRouter(
 )
 
 
-@router.get("/")
-async def get_events():
+@router.get("")
+def get_events():
 
     events = list(
         mongodb.database.events.find(
