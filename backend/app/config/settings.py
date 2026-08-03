@@ -28,8 +28,8 @@ class Settings:
     CLIP_FOLDER = Path(os.getenv("CLIP_FOLDER", "data/clips"))
 
     YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo26n.pt")
-    TRACKER = os.getenv("TRACKER", "botsort.yaml")
-    CLIP_MODEL = os.getenv("CLIP_MODEL", "ViT-B-16-SigLIP-2")
+    TRACKER = os.getenv("TRACKER", "ocsort.yaml")
+    CLIP_MODEL = os.getenv("CLIP_MODEL", "ViT-B-32")
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:latest")
@@ -37,7 +37,7 @@ class Settings:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
     DISABLE_CLIP = os.getenv("DISABLE_CLIP", "false").lower() == "true"
 
-    DEVICE = os.getenv("DEVICE", "cpu")
+    DEVICE = os.getenv("DEVICE", "cuda")
 
     # Live stream performance
     INFERENCE_SIZE = int(os.getenv("INFERENCE_SIZE", "480"))
@@ -47,8 +47,8 @@ class Settings:
     STREAM_HEIGHT = int(os.getenv("STREAM_HEIGHT", "480"))
     STREAM_JPEG_QUALITY = int(os.getenv("STREAM_JPEG_QUALITY", "72"))
 
-    # CLIP semantic pipeline
-    CLIP_SCENE_INTERVAL = float(os.getenv("CLIP_SCENE_INTERVAL", "3.0"))
+    # CLIP semantic pipeline (throttled to 5s for max real-world FPS)
+    CLIP_SCENE_INTERVAL = float(os.getenv("CLIP_SCENE_INTERVAL", "5.0"))
     CLIP_CROP_MIN_SIZE = int(os.getenv("CLIP_CROP_MIN_SIZE", "40"))
 
     # Semantic search

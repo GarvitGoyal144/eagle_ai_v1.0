@@ -6,13 +6,14 @@ from app.config.settings import settings
 
 class DetectionService:
     """
-    Detection + tracking using YOLO26 with ByteTrack.
-    Model loads lazily on first inference to keep API startup fast.
+    Detection + tracking using YOLO26 with OC-SORT tracker.
+    OC-SORT provides superior occlusion recovery and trajectory estimation
+    at real-time FPS without heavy Re-ID neural network overhead.
     """
 
     def __init__(self):
         self.model = None
-        self.tracker = settings.TRACKER or "bytetrack.yaml"
+        self.tracker = settings.TRACKER or "ocsort.yaml"
 
         if settings.DEVICE.lower() == "cuda" and torch.cuda.is_available():
             self.device = "cuda"
@@ -42,7 +43,6 @@ class DetectionService:
             conf=settings.DETECTION_CONF,
             imgsz=settings.INFERENCE_SIZE,
             verbose=False,
-            half=self.device == "cuda",
         )
 
         detections = []
