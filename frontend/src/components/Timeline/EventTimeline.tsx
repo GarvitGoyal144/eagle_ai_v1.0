@@ -47,7 +47,7 @@ function EventTimeline() {
         };
 
         loadEvents();
-        const interval = setInterval(loadEvents, 1000);
+        const interval = setInterval(loadEvents, 5000); // poll every 5s
         return () => clearInterval(interval);
     }, []);
 

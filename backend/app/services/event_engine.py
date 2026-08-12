@@ -8,6 +8,11 @@ class EventEngine:
 
     def __init__(self):
         self.active_tracks = {}
+        self.source_name = "webcam"  # updated per session by camera or video processor
+
+    def set_source(self, source: str):
+        """Set the camera/video source name for event labeling."""
+        self.source_name = source
 
     def process(self, detections):
 
@@ -41,7 +46,7 @@ class EventEngine:
 
                     "bbox": detection["bbox"],
 
-                    "camera": "webcam",
+                    "camera": self.source_name,
 
                     "timestamp": now
 
@@ -59,7 +64,7 @@ class EventEngine:
 
                     "track_id": track_id,
 
-                    "camera": "webcam",
+                    "camera": self.source_name,
 
                     "timestamp": now
 

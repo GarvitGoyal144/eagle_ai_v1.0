@@ -9,9 +9,9 @@ from app.api.routes.embeddings import router as embeddings_router
 from app.api.routes.events import router as events_router
 from app.api.routes.system import router as system_router
 from app.api.routes.video import router as video_router
+from app.config.settings import settings
 from app.database.mongodb import mongodb
-
-
+from app.services.camera.camera_manager import camera_manager
 from app.services.event_service import event_service
 
 
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     await mongodb.connect()
     event_service.init_indexes()
     yield
+    camera_manager.stop()
     await mongodb.disconnect()
 
 
@@ -33,10 +34,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -37,11 +37,19 @@ class CameraManager:
 
     def stop(self):
         with self.lock:
+            if not self.running and self.camera is None:
+                return
             self.running = False
-            inference_worker.stop()
 
+        # Stop inference worker outside lock to avoid deadlocks
+        inference_worker.stop()
+
+        with self.lock:
             if self.camera is not None:
-                self.camera.release()
+                try:
+                    self.camera.release()
+                except Exception as exc:
+                    print(f"Note releasing camera: {exc}")
                 self.camera = None
 
     @property

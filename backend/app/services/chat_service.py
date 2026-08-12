@@ -1,8 +1,41 @@
+from datetime import datetime
+import re
 import httpx
 
 from app.config.settings import settings
 from app.database.mongodb import mongodb
 from app.services.search_service import search_service
+
+
+def _format_timestamp(ts) -> str:
+    """Format raw datetime/ISO string into concise, human-readable timestamp."""
+    if not ts:
+        return "Unknown Time"
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return ts
+    if isinstance(ts, datetime):
+        return ts.strftime("%b %d, %H:%M:%S")
+    return str(ts)
+
+
+def _transform_query_for_clip(query: str) -> str:
+    """
+    Transform conversational user questions into descriptive image prompts.
+    CLIP models perform significantly better with image captions than questions.
+    """
+    q = query.strip().lower()
+
+    # Remove question phrasing
+    q = re.sub(r"^(is|are|was|were|can you see|show me|find|look for|did anyone|has anyone)\s+(there|a|an|any)?\s*", "", q)
+    q = re.sub(r"\?$", "", q)
+
+    if not q:
+        return query
+
+    return f"a surveillance camera photo of {q}"
 
 
 SYSTEM_PROMPT = """You are Eagle AI, an intelligent surveillance assistant.
@@ -19,9 +52,9 @@ MATCHED RESULTS (ranked by relevance):
 RULES:
 - Answer using ONLY the information provided above.
 - Always mention timestamps and track IDs when relevant.
+- Use concise, readable time formats (e.g., "Jul 01, 13:36:52").
 - If the information is not available in the context, say so honestly.
 - Be concise and precise. Security operators need clear, actionable answers.
-- Format timestamps in a human-readable way.
 """
 
 
@@ -51,15 +84,18 @@ class ChatService:
 
         lines = []
         for ev in events:
-            ts = ev.get("timestamp", "unknown time")
+            ts = _format_timestamp(ev.get("timestamp"))
             event_type = ev.get("event_type", "UNKNOWN")
             track_id = ev.get("track_id", "?")
             class_name = ev.get("class_name", "")
             confidence = ev.get("confidence")
+            attrs = ev.get("attributes")
 
             line = f"- [{ts}] {event_type}: Track #{track_id}"
             if class_name:
                 line += f" ({class_name})"
+            if attrs:
+                line += f" visual_attributes=[{', '.join(attrs)}]"
             if confidence:
                 line += f" confidence={confidence:.0%}"
             lines.append(line)
@@ -67,26 +103,30 @@ class ChatService:
         return "\n".join(lines)
 
     def _format_search_context(self, results: list[dict]) -> str:
-        """Format hybrid search results into a readable string."""
+        """Format hybrid search results into a readable string for the LLM."""
         if not results:
-            return "No matching results found."
+            return "No matching visual or keyword results found."
 
         lines = []
         for i, r in enumerate(results, 1):
-            ts = r.get("timestamp", "unknown time")
+            ts = _format_timestamp(r.get("timestamp"))
             score = r.get("score", 0)
 
-            if r["type"] == "scene":
+            if r.get("type") == "scene":
+                caption = r.get("caption") or r.get("summary") or "Visual camera frame captured"
+                category = r.get("category", "normal")
                 lines.append(
-                    f"  {i}. [Scene Snapshot] {ts} — relevance: {score:.2f}"
+                    f"  {i}. [Scene Match ({category})] at {ts} (Relevance: {score:.0%}) — Description: \"{caption}\""
                 )
             else:
                 event_type = r.get("event_type", "UNKNOWN")
                 track_id = r.get("track_id", "?")
                 class_name = r.get("class_name", "")
+                attrs = r.get("attributes")
+                attrs_str = f" ({', '.join(attrs)})" if attrs else ""
                 lines.append(
-                    f"  {i}. [{event_type}] Track #{track_id} {class_name} "
-                    f"at {ts} — relevance: {score:.2f}"
+                    f"  {i}. [{event_type}] Track #{track_id} {class_name}{attrs_str} "
+                    f"at {ts} (Relevance: {score:.0%})"
                 )
 
         return "\n".join(lines)

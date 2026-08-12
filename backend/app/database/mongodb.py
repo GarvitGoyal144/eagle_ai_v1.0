@@ -19,8 +19,16 @@ class MongoDB:
 
     async def connect(self):
         """Connect to MongoDB."""
-
-        self.client = MongoClient(settings.MONGO_URI)
+        try:
+            import certifi
+            self.client = MongoClient(settings.MONGO_URI, tlsCAFile=certifi.where())
+            # Quick ping test
+            self.client.admin.command('ping')
+        except Exception:
+            try:
+                self.client = MongoClient(settings.MONGO_URI, tlsAllowInvalidCertificates=True)
+            except Exception:
+                self.client = MongoClient(settings.MONGO_URI)
 
         self.database = self.client[settings.DATABASE_NAME]
 
@@ -30,8 +38,23 @@ class MongoDB:
         """Close MongoDB connection."""
 
         if self.client:
-            self.client.close()
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.client = None
+            self.database = None
             print("❌ MongoDB connection closed")
+
+    def is_connected(self) -> bool:
+        """Ping MongoDB to verify live connection."""
+        if self.client is None:
+            return False
+        try:
+            self.client.admin.command("ping")
+            return True
+        except Exception:
+            return False
 
 
 mongodb = MongoDB()

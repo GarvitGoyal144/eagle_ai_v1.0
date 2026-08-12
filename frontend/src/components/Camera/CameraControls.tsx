@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import api from "../../api/api";
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 }
 
 function CameraControls({ running, setRunning, aiEnabled, setAiEnabled }: Props) {
-    const fetchStatus = async () => {
+    const fetchStatus = useCallback(async () => {
         try {
             const res = await api.get("/camera/status");
             setRunning(res.data.is_running);
@@ -17,11 +17,11 @@ function CameraControls({ running, setRunning, aiEnabled, setAiEnabled }: Props)
         } catch (err) {
             console.error("Camera status error:", err);
         }
-    };
+    }, [setRunning, setAiEnabled]);
 
     useEffect(() => {
         fetchStatus();
-    }, []);
+    }, [fetchStatus]);
 
     const startCamera = async () => {
         try {

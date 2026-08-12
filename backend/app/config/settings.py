@@ -23,6 +23,14 @@ class Settings:
     MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
     DATABASE_NAME = os.getenv("DATABASE_NAME", "eagle_ai")
 
+    CORS_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if origin.strip()
+    ]
+
     UPLOAD_FOLDER = Path(os.getenv("UPLOAD_FOLDER", "data/videos"))
     OUTPUT_FOLDER = Path(os.getenv("OUTPUT_FOLDER", "data/outputs"))
     CLIP_FOLDER = Path(os.getenv("CLIP_FOLDER", "data/clips"))

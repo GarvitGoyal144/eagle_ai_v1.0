@@ -1,3 +1,4 @@
+import asyncio
 import cv2
 import time
 
@@ -51,36 +52,39 @@ def generate_frames():
     When AI is enabled:  submit frames to inference, draw bounding boxes.
     When AI is disabled: stream raw camera frames with zero processing overhead.
     """
-    while True:
-        if not camera_manager.is_running:
-            time.sleep(0.1)
-            continue
+    try:
+        while True:
+            if not camera_manager.is_running:
+                time.sleep(0.1)
+                continue
 
-        frame = camera_manager.get_frame()
-        if frame is None:
-            time.sleep(0.01)
-            continue
+            frame = camera_manager.get_frame()
+            if frame is None:
+                time.sleep(0.01)
+                continue
 
-        if camera_manager.ai_enabled:
-            # AI mode — run inference + draw annotations
-            inference_worker.submit_frame(frame)
-            display = draw_detections(frame, inference_worker.get_detections())
-        else:
-            # Raw mode — pass through untouched
-            display = frame
+            if camera_manager.ai_enabled:
+                # AI mode — run inference + draw annotations
+                inference_worker.submit_frame(frame)
+                display = draw_detections(frame, inference_worker.get_detections())
+            else:
+                # Raw mode — pass through untouched
+                display = frame
 
-        ret, buffer = cv2.imencode(
-            ".jpg",
-            display,
-            [cv2.IMWRITE_JPEG_QUALITY, settings.STREAM_JPEG_QUALITY],
-        )
-        if not ret:
-            continue
+            ret, buffer = cv2.imencode(
+                ".jpg",
+                display,
+                [cv2.IMWRITE_JPEG_QUALITY, settings.STREAM_JPEG_QUALITY],
+            )
+            if not ret:
+                continue
 
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
-        )
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+            )
+    except (GeneratorExit, asyncio.CancelledError, KeyboardInterrupt):
+        pass
 
 
 @router.get("/live")

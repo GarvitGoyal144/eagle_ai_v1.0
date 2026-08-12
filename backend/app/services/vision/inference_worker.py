@@ -33,7 +33,7 @@ class InferenceWorker:
         with self._lock:
             self._running = False
 
-        if self._thread is not None:
+        if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=2.0)
             self._thread = None
 
@@ -97,24 +97,31 @@ class InferenceWorker:
 
                 with self._lock:
                     self._detections = detections
-            except Exception as exc:
-                print(f"Inference error: {exc}")
+            except BaseException as exc:
+                if not self._running:
+                    break
+                print(f"Inference worker note: {exc}")
 
             elapsed = time.perf_counter() - started
             time.sleep(max(0.0, frame_interval - elapsed))
 
     @staticmethod
     def _encode_scene(frame, timestamp, event_service, embedding_engine):
-        """Encode the full frame with CLIP and store as a scene snapshot."""
+        """Encode full frame with CLIP, classify dataset caption, and store scene snapshot."""
         try:
-            embedding = embedding_engine.encode_frame(frame)
-            event_service.save_scene_embedding(embedding, timestamp)
+            res = embedding_engine.classify_scene_caption(frame)
+            event_service.save_scene_embedding(
+                embedding=res["embedding"],
+                timestamp=timestamp,
+                caption=res.get("caption", ""),
+                category=res.get("category", "normal"),
+            )
         except Exception as exc:
             print(f"Scene encoding error: {exc}")
 
     @staticmethod
     def _encode_crops(frame, events, embedding_engine):
-        """Attach CLIP crop embeddings to new-track events."""
+        """Attach CLIP crop embeddings & visual attributes (clothing, vehicles, carried items) to events."""
         for event in events:
             if event.get("event_type") not in ("PERSON_ENTERED", "OBJECT_DETECTED"):
                 continue
@@ -122,9 +129,11 @@ class InferenceWorker:
             if bbox is None:
                 continue
             try:
-                crop_emb = embedding_engine.encode_crop(frame, bbox)
+                crop_emb, attrs = embedding_engine.classify_crop_attributes(frame, bbox)
                 if crop_emb is not None:
                     event["embedding"] = crop_emb.tolist()
+                if attrs:
+                    event["attributes"] = attrs
             except Exception as exc:
                 print(f"Crop encoding error (track #{event.get('track_id')}): {exc}")
 

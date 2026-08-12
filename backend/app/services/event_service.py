@@ -4,6 +4,7 @@ import uuid
 from pymongo import TEXT
 
 from app.database.mongodb import mongodb
+from app.services.event_engine import event_engine
 
 
 class EventService:
@@ -14,12 +15,32 @@ class EventService:
             return
         try:
             mongodb.database.events.create_index(
-                [("class_name", TEXT), ("event_type", TEXT), ("camera", TEXT)],
+                [
+                    ("class_name", TEXT),
+                    ("event_type", TEXT),
+                    ("camera", TEXT),
+                    ("caption", TEXT),
+                    ("attributes", TEXT),
+                ],
                 name="text_search_index",
                 background=True,
             )
         except Exception as exc:
             print(f"Index creation note: {exc}")
+
+    def get_events(self, limit: int = 50, offset: int = 0) -> list[dict]:
+        """Fetch recent events from MongoDB with pagination support."""
+        if mongodb.database is None:
+            return []
+        return list(
+            mongodb.database.events.find(
+                {},
+                {"_id": 0}
+            )
+            .sort("timestamp", -1)
+            .skip(offset)
+            .limit(limit)
+        )
 
     def save_events(self, events):
         """Save detection/tracking events to MongoDB."""
@@ -27,26 +48,49 @@ class EventService:
             return
 
         for event in events:
-            event["event_id"] = str(uuid.uuid4())
-            mongodb.database.events.insert_one(event)
-            print(f"✅ {event['event_type']}  Track #{event['track_id']}")
+            try:
+                event["event_id"] = str(uuid.uuid4())
+                mongodb.database.events.insert_one(event)
 
-    def save_scene_embedding(self, embedding, timestamp: float):
+                attrs_str = (
+                    f" [{', '.join(event['attributes'])}]"
+                    if event.get("attributes")
+                    else ""
+                )
+                print(
+                    f"✅ {event['event_type']}  Track #{event['track_id']} ({event['class_name']}){attrs_str}"
+                )
+            except Exception as exc:
+                print(f"Note: Could not save event to database: {exc}")
+
+    def save_scene_embedding(
+        self,
+        embedding,
+        timestamp: float,
+        caption: str = "",
+        category: str = "normal",
+    ):
         """
-        Save a scene embedding snapshot to MongoDB.
-        These are full-frame embeddings captured every N seconds.
+        Save a scene embedding snapshot with dataset caption to MongoDB.
         """
         if mongodb.database is None:
             return
 
-        doc = {
-            "snapshot_id": str(uuid.uuid4()),
-            "embedding": embedding.tolist(),
-            "camera": "webcam",
-            "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc),
-        }
+        try:
+            doc = {
+                "snapshot_id": str(uuid.uuid4()),
+                "embedding": embedding.tolist() if hasattr(embedding, "tolist") else embedding,
+                "caption": caption,
+                "category": category,
+                "camera": event_engine.source_name,
+                "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc),
+            }
 
-        mongodb.database.scene_embeddings.insert_one(doc)
+            mongodb.database.scene_embeddings.insert_one(doc)
+            if caption:
+                print(f"📸 Scene Snapshot ({category}): \"{caption[:60]}...\"")
+        except Exception as exc:
+            print(f"Note: Could not save scene embedding: {exc}")
 
 
 event_service = EventService()

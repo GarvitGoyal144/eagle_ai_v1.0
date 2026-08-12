@@ -44,7 +44,7 @@ function ChatPanel() {
         } catch (err) {
             const errorMsg: ChatMessage = {
                 role: "assistant",
-                content: "⚠️ Failed to get a response. Check that the backend and Ollama are running.",
+                content: "⚠️ Failed to reach the AI assistant. Please try again in a moment.",
             };
             setMessages((prev) => [...prev, errorMsg]);
             console.error("Chat error:", err);

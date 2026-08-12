@@ -1,4 +1,5 @@
 import re
+from datetime import timedelta
 import numpy as np
 
 from app.config.settings import settings
@@ -15,15 +16,66 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(dot / norm)
 
 
+def _transform_query_for_clip(query: str) -> str:
+    """
+    Transform conversational user questions into descriptive image prompts.
+    CLIP models perform significantly better with image captions than questions.
+    """
+    q = query.strip().lower()
+
+    # Remove question phrasing
+    q = re.sub(r"^(is|are|was|were|can you see|show me|find|look for|did anyone|has anyone)\s+(there|a|an|any)?\s*", "", q)
+    q = re.sub(r"\?$", "", q)
+
+    if not q:
+        return query
+
+    return f"a surveillance camera photo of {q}"
+
+
 class SearchService:
     """
     Hybrid Search Engine combining:
     1. Keyword/Text matching (MongoDB text & regex index)
     2. Semantic vector search (SigLIP / CLIP embeddings)
 
-    Works instantly on fresh events even before embeddings are generated,
-    and gains semantic depth as embeddings accumulate.
+    Fix:
+    - Enriches scene snapshot hits with text summaries of nearby events (±5s)
+    - Retains full cosine similarity scores (no artificial degradation)
     """
+
+    def _get_nearby_events_summary(self, timestamp) -> str:
+        """Fetch detection events recorded around the scene snapshot timestamp (±5 sec)."""
+        if mongodb.database is None or not timestamp:
+            return ""
+
+        try:
+            time_window = timedelta(seconds=5)
+            nearby = list(
+                mongodb.database.events.find(
+                    {
+                        "timestamp": {
+                            "$gte": timestamp - time_window,
+                            "$lte": timestamp + time_window,
+                        }
+                    },
+                    {"_id": 0, "class_name": 1, "track_id": 1, "event_type": 1},
+                ).limit(5)
+            )
+
+            if not nearby:
+                return "General scene frame (no active track events)"
+
+            descriptions = []
+            for ev in nearby:
+                cls = ev.get("class_name", "object")
+                track_id = ev.get("track_id", "?")
+                event_type = ev.get("event_type", "DETECTED")
+                descriptions.append(f"{cls} #{track_id} ({event_type})")
+
+            return ", ".join(descriptions)
+        except Exception:
+            return ""
 
     def keyword_search(self, query: str, limit: int = 50) -> list[dict]:
         """Keyword / regex matching over event fields."""
@@ -56,13 +108,13 @@ class SearchService:
                     "confidence": doc.get("confidence"),
                     "camera": doc.get("camera", "webcam"),
                     "timestamp": doc.get("timestamp"),
-                    "score": round(min(1.0, float(doc.get("score", 0.5)) / 2.0), 4),
+                    "score": round(min(1.0, float(doc.get("score", 0.5))), 4),
                     "search_type": "keyword",
                 })
         except Exception:
             pass
 
-        # Fallback to regex matching on class_name / event_type if text search yielded few results
+        # Fallback to regex matching on class_name / event_type
         if len(results) < 3:
             pattern = re.compile(clean_query, re.IGNORECASE)
             regex_matched = list(
@@ -91,7 +143,7 @@ class SearchService:
                         "confidence": doc.get("confidence"),
                         "camera": doc.get("camera", "webcam"),
                         "timestamp": doc.get("timestamp"),
-                        "score": 0.8,
+                        "score": 0.85,
                         "search_type": "keyword",
                     })
 
@@ -102,8 +154,11 @@ class SearchService:
         if mongodb.database is None or settings.DISABLE_CLIP:
             return []
 
+        # Transform conversational query into descriptive image caption prompt for CLIP
+        prompt = _transform_query_for_clip(query)
+
         try:
-            query_embedding = embedding_engine.encode_query(query)
+            query_embedding = embedding_engine.encode_query(prompt)
         except Exception as exc:
             print(f"Embedding query error: {exc}")
             return []
@@ -114,7 +169,15 @@ class SearchService:
         scenes = list(
             mongodb.database.scene_embeddings.find(
                 {},
-                {"_id": 0, "snapshot_id": 1, "embedding": 1, "camera": 1, "timestamp": 1},
+                {
+                    "_id": 0,
+                    "snapshot_id": 1,
+                    "embedding": 1,
+                    "camera": 1,
+                    "timestamp": 1,
+                    "caption": 1,
+                    "category": 1,
+                },
             )
             .sort("timestamp", -1)
             .limit(200)
@@ -125,12 +188,22 @@ class SearchService:
             if emb is None:
                 continue
             score = _cosine_similarity(query_embedding, np.array(emb))
+            if score < 0.15:  # filter noise
+                continue
+
+            ts = scene.get("timestamp")
+            nearby_summary = self._get_nearby_events_summary(ts)
+            caption = scene.get("caption") or nearby_summary
+
             results.append({
                 "type": "scene",
                 "snapshot_id": scene.get("snapshot_id"),
                 "camera": scene.get("camera", "webcam"),
-                "timestamp": scene.get("timestamp"),
+                "timestamp": ts,
                 "score": round(score, 4),
+                "caption": caption,
+                "category": scene.get("category", "normal"),
+                "summary": nearby_summary,
                 "search_type": "semantic",
             })
 
@@ -148,6 +221,7 @@ class SearchService:
                     "camera": 1,
                     "timestamp": 1,
                     "embedding": 1,
+                    "attributes": 1,
                 },
             )
             .sort("timestamp", -1)
@@ -159,12 +233,16 @@ class SearchService:
             if emb is None:
                 continue
             score = _cosine_similarity(query_embedding, np.array(emb))
+            if score < 0.15:
+                continue
+
             results.append({
                 "type": "event",
                 "event_id": event.get("event_id"),
                 "event_type": event.get("event_type"),
                 "track_id": event.get("track_id"),
                 "class_name": event.get("class_name"),
+                "attributes": event.get("attributes", []),
                 "confidence": event.get("confidence"),
                 "camera": event.get("camera", "webcam"),
                 "timestamp": event.get("timestamp"),
@@ -178,7 +256,7 @@ class SearchService:
     def search(self, query: str, top_k: int | None = None) -> list[dict]:
         """
         Hybrid search combining Keyword matching + Semantic similarity.
-        Fuses both score channels to return the top-K relevant results.
+        Fuses both score channels to return top-K relevant results.
         """
         k = top_k or settings.SEARCH_TOP_K
 
@@ -191,20 +269,18 @@ class SearchService:
         for hit in keyword_hits:
             key = hit.get("event_id") or hit.get("snapshot_id")
             if key:
-                # 40% weight to keyword match
-                merged[key] = {**hit, "score": round(hit["score"] * 0.4, 4)}
+                merged[key] = {**hit}
 
         for hit in semantic_hits:
             key = hit.get("event_id") or hit.get("snapshot_id")
             if key:
                 if key in merged:
-                    # Combined score: 40% keyword + 60% semantic
-                    combined = merged[key]["score"] + (hit["score"] * 0.6)
-                    merged[key]["score"] = round(combined, 4)
+                    merged[key]["score"] = max(merged[key]["score"], hit["score"])
                     merged[key]["search_type"] = "hybrid"
+                    if hit.get("summary"):
+                        merged[key]["summary"] = hit["summary"]
                 else:
-                    # 60% weight to pure semantic
-                    merged[key] = {**hit, "score": round(hit["score"] * 0.6, 4)}
+                    merged[key] = {**hit}
 
         final_results = list(merged.values())
         final_results.sort(key=lambda r: r["score"], reverse=True)
