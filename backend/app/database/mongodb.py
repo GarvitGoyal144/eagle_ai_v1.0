@@ -19,19 +19,22 @@ class MongoDB:
 
     async def connect(self):
         """Connect to MongoDB."""
+        mongo_kwargs = {
+            "tlsAllowInvalidCertificates": True,
+            "serverSelectionTimeoutMS": 5000,
+        }
         try:
             import certifi
-            self.client = MongoClient(settings.MONGO_URI, tlsCAFile=certifi.where())
-            # Quick ping test
-            self.client.admin.command('ping')
+            mongo_kwargs["tlsCAFile"] = certifi.where()
         except Exception:
-            try:
-                self.client = MongoClient(settings.MONGO_URI, tlsAllowInvalidCertificates=True)
-            except Exception:
-                self.client = MongoClient(settings.MONGO_URI)
+            pass
+
+        try:
+            self.client = MongoClient(settings.MONGO_URI, **mongo_kwargs)
+        except Exception:
+            self.client = MongoClient(settings.MONGO_URI)
 
         self.database = self.client[settings.DATABASE_NAME]
-
         print("✅ Connected to MongoDB")
 
     async def disconnect(self):
