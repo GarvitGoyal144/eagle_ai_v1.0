@@ -45,7 +45,12 @@ class Settings:
     # Default to groq (free cloud LLM) — NOT ollama (local only)
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-    DISABLE_CLIP = os.getenv("DISABLE_CLIP", "false").lower() == "true"
+    # Auto-disable CLIP on Render/cloud where RAM is limited to 512MB.
+    # CLIP (ViT-B-32) + PyTorch + YOLO = ~550MB which exceeds Render's free tier.
+    # Set DISABLE_CLIP=false explicitly to override this on paid plans.
+    _on_render = os.getenv("RENDER") == "true"  # Render sets this automatically
+    _disable_clip_default = "true" if _on_render else "false"
+    DISABLE_CLIP = os.getenv("DISABLE_CLIP", _disable_clip_default).lower() == "true"
 
     DEVICE = os.getenv("DEVICE", "cpu")
 
@@ -75,5 +80,5 @@ if not os.getenv("MONGO_URI") and not os.getenv("MONGODB_URI"):
     print("⚠️  WARNING: MONGO_URI env var not set — using localhost fallback. Set MONGO_URI on Render/cloud.")
 if not settings.GROQ_API_KEY and settings.LLM_PROVIDER == "groq":
     print("⚠️  WARNING: GROQ_API_KEY env var not set — chat will fail. Set GROQ_API_KEY on Render/cloud.")
-print(f"🔧 LLM Provider: {settings.LLM_PROVIDER} | CORS: {settings.CORS_ORIGINS}")
+print(f"🔧 LLM Provider: {settings.LLM_PROVIDER} | CORS: {settings.CORS_ORIGINS} | CLIP: {'DISABLED (memory safe)' if settings.DISABLE_CLIP else 'ENABLED'}")
 
