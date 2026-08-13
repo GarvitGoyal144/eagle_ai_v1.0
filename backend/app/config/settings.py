@@ -45,12 +45,8 @@ class Settings:
     # Default to groq (free cloud LLM) — NOT ollama (local only)
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-    # Auto-disable CLIP on Render/cloud where RAM is limited to 512MB.
-    # CLIP (ViT-B-32) + PyTorch + YOLO = ~550MB which exceeds Render's free tier.
-    # Set DISABLE_CLIP=false explicitly to override this on paid plans.
-    _on_render = os.getenv("RENDER") == "true"  # Render sets this automatically
-    _disable_clip_default = "true" if _on_render else "false"
-    DISABLE_CLIP = os.getenv("DISABLE_CLIP", _disable_clip_default).lower() == "true"
+    # MobileCLIP2-S0 is ultra-lightweight (<100MB), allowing full semantic search on Render
+    DISABLE_CLIP = os.getenv("DISABLE_CLIP", "false").lower() == "true"
 
     DEVICE = os.getenv("DEVICE", "cpu")
 
