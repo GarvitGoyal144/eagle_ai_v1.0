@@ -26,7 +26,7 @@ class EventService:
                 background=True,
             )
         except Exception as exc:
-            print(f"Index creation note: {exc}")
+            print(f"Index creation note: {exc}", flush=True)
 
     def get_events(self, limit: int = 50, offset: int = 0) -> list[dict]:
         """Fetch recent events from MongoDB with pagination support."""
@@ -43,7 +43,7 @@ class EventService:
                 .limit(limit)
             )
         except Exception as exc:
-            print(f"Database query note in get_events: {exc}")
+            print(f"Database query note in get_events: {exc}", flush=True)
             return []
 
     def save_events(self, events):
@@ -61,11 +61,15 @@ class EventService:
                     if event.get("attributes")
                     else ""
                 )
+                cls_name = event.get("class_name", "object")
+                evt_type = event.get("event_type", "EVENT")
+                trk_id = event.get("track_id", "?")
                 print(
-                    f"✅ {event['event_type']}  Track #{event['track_id']} ({event['class_name']}){attrs_str}"
+                    f"✅ {evt_type}  Track #{trk_id} ({cls_name}){attrs_str}",
+                    flush=True
                 )
             except Exception as exc:
-                print(f"Note: Could not save event to database: {exc}")
+                print(f"Note: Could not save event to database: {exc}", flush=True)
 
     def save_scene_embedding(
         self,
@@ -94,9 +98,9 @@ class EventService:
 
             mongodb.database.scene_embeddings.insert_one(doc)
             if caption:
-                print(f"📸 Scene Snapshot ({category}): \"{caption[:60]}...\"")
+                print(f"📸 Scene Snapshot ({category}): \"{caption[:60]}...\"", flush=True)
         except Exception as exc:
-            print(f"Note: Could not save scene embedding: {exc}")
+            print(f"Note: Could not save scene embedding: {exc}", flush=True)
 
 
 event_service = EventService()

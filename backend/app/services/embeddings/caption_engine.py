@@ -27,6 +27,27 @@ DEFAULT_ATTRIBUTES = [
     "blue car or vehicle",
     "silver or grey car",
     "motorcycle or bicycle",
+    "truck or large vehicle",
+]
+
+# Rich surveillance & incident categories for zero-shot scene classification
+DEFAULT_INCIDENT_CAPTIONS = [
+    # Normal operations
+    ("normal traffic flow with cars and vehicles moving on the road", "normal: traffic"),
+    ("vehicles parked or driving normally along the street", "normal: vehicles"),
+    ("a person walking normally on the sidewalk or pedestrian area", "normal: pedestrian"),
+    ("multiple people walking peacefully in a public area", "normal: pedestrians"),
+    # Traffic incidents & Accidents
+    ("a car accident with damaged vehicles or a collision on the road", "incident: car accident"),
+    ("two vehicles crashing or colliding with each other", "incident: vehicle collision"),
+    ("a wrecked, damaged, or overturned car after an accident", "incident: crash damage"),
+    ("vehicles stopped abruptly on the road due to an accident or hazard", "incident: traffic obstruction"),
+    ("a vehicle driving off the road or into a barrier", "incident: reckless driving"),
+    # Security & Pedestrian Incidents
+    ("a person lying on the ground, fallen, or injured", "incident: fallen person"),
+    ("people fighting, assaulting, or engaged in a physical altercation", "incident: physical altercation"),
+    ("a crowd of people running or fleeing from an area", "incident: crowd panic"),
+    ("smoke, fire, or flames coming from a vehicle or structure", "incident: fire/smoke"),
 ]
 
 
@@ -34,10 +55,9 @@ class CaptionEngine:
     """
     Zero-Shot Visual Caption & Attribute Engine.
 
-    1. Loads dataset captions from `merged_captions.json`
-    2. Combines them with visual attribute templates
-    3. Pre-encodes text vectors into a tensor matrix at startup (0ms runtime math)
-    4. Performs fast dot-product classification on image crops and scene frames
+    1. Loads dataset captions from `merged_captions.json` + incident templates
+    2. Pre-encodes text vectors into a tensor matrix at startup (0ms runtime math)
+    3. Performs fast dot-product classification on image crops and scene frames
     """
 
     def __init__(self):
@@ -55,9 +75,14 @@ class CaptionEngine:
             return
 
         self._encoder = encoder
-        print("🧠 Initializing Visual Caption & Attribute Engine...")
+        print("🧠 Initializing Visual Caption & Attribute Engine...", flush=True)
 
-        # ── 1. Load dataset captions from merged_captions.json ──
+        # ── 1. Load incident captions ──
+        for caption, category in DEFAULT_INCIDENT_CAPTIONS:
+            self._captions.append(caption)
+            self._caption_categories.append(category)
+
+        # ── 2. Load dataset captions from merged_captions.json if present ──
         dataset_path = Path("data/merged_captions.json")
         if not dataset_path.exists():
             dataset_path = settings.BASE_DIR.parent / "data" / "merged_captions.json"
@@ -68,9 +93,8 @@ class CaptionEngine:
                     data = json.load(f)
 
                 descriptions = data.get("descriptions", [])
-                seen = set()
+                seen = set(self._captions)
 
-                # Curate top representative descriptions across categories
                 for item in descriptions:
                     key = list(item.keys())[0] if item else None
                     if not key:
@@ -85,35 +109,23 @@ class CaptionEngine:
                         self._captions.append(clean_desc)
                         self._caption_categories.append(f"{key}: {category}")
 
-                        if len(self._captions) >= 300:  # sample top 300 captions for fast matrix math
+                        if len(self._captions) >= 300:
                             break
 
-                print(f"Loaded {len(self._captions)} curated captions from merged_captions.json")
+                print(f"Loaded {len(self._captions)} curated captions (including traffic incident templates)", flush=True)
             except Exception as exc:
-                print(f"Dataset loading note: {exc}")
+                print(f"Dataset loading note: {exc}", flush=True)
 
-        # Fallback captions if dataset missing or small
-        if len(self._captions) < 10:
-            self._captions = [
-                "a person walking normally through an indoor room",
-                "a person standing in a hallway or entrance",
-                "multiple people moving through a public area",
-                "an individual forcefully pushing or shoving another person",
-                "a person carrying a heavy bag or object",
-                "a vehicle driving or parked in a lot",
-            ]
-            self._caption_categories = ["normal", "normal", "normal", "anomalous: assault", "normal", "normal"]
-
-        # ── 2. Pre-encode caption text vectors ──
+        # ── 3. Pre-encode caption text vectors ──
         caption_vectors = [encoder.encode_text(c) for c in self._captions]
         self._caption_matrix = np.array(caption_vectors)  # shape (N, 512)
 
-        # ── 3. Pre-encode visual attribute vectors ──
+        # ── 4. Pre-encode visual attribute vectors ──
         attribute_vectors = [encoder.encode_text(a) for a in self._attribute_labels]
         self._attribute_matrix = np.array(attribute_vectors)  # shape (M, 512)
 
         self._loaded = True
-        print("✅ Visual Caption & Attribute Engine pre-encoded and ready (0ms runtime math)")
+        print("✅ Visual Caption & Attribute Engine pre-encoded and ready (0ms runtime math)", flush=True)
 
     def classify_crop(self, crop_embedding: np.ndarray) -> list[str]:
         """
@@ -130,10 +142,9 @@ class CaptionEngine:
         top_indices = np.argsort(scores)[::-1]
         matches = []
 
-        for idx in top_indices[:2]:  # top 2 attributes
+        for idx in top_indices[:2]:
             if scores[idx] > 0.22:
                 label = self._attribute_labels[idx]
-                # Clean up label format
                 clean_label = label.replace("person ", "").replace("car or vehicle", "vehicle")
                 matches.append(clean_label)
 
@@ -141,7 +152,7 @@ class CaptionEngine:
 
     def classify_scene(self, scene_embedding: np.ndarray) -> dict:
         """
-        Match full video frame snapshot to dataset captions in merged_captions.json.
+        Match full video frame snapshot to surveillance & incident captions.
         Runs in 0.0ms via matrix multiplication.
         """
         if not self._loaded or self._caption_matrix is None or scene_embedding is None:
