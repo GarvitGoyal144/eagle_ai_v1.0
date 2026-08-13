@@ -63,10 +63,10 @@ class CLIPEncoder(BaseEncoder):
         try:
             if is_image:
                 headers["Content-Type"] = "image/jpeg"
-                response = httpx.post(self.api_url, headers=headers, content=payload, timeout=10.0)
+                response = httpx.post(self.api_url, headers=headers, content=payload, timeout=2.0)
             else:
                 headers["Content-Type"] = "application/json"
-                response = httpx.post(self.api_url, headers=headers, json=payload, timeout=10.0)
+                response = httpx.post(self.api_url, headers=headers, json=payload, timeout=2.0)
 
             if response.status_code == 200:
                 vec = np.array(response.json(), dtype=np.float32)

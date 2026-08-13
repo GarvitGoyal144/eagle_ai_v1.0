@@ -13,7 +13,7 @@ router = APIRouter(prefix="/visual", tags=["Visual Retrieval"])
 
 
 def get_event_metadata(event_id: str):
-    if not mongodb.database:
+    if mongodb.database is None:
         raise HTTPException(status_code=500, detail="Database not connected")
 
     event = mongodb.database.events.find_one({"event_id": event_id})

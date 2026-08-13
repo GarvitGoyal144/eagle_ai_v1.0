@@ -113,7 +113,7 @@ class VideoProcessor:
                 event["video_filename"] = filename
                 event["session_id"] = session_id
 
-            # --- Vision Encoding (only when CLIP is enabled) ---
+            # --- Vision Encoding (Scene Snapshots for Semantic Search & Visual Retrieval) ---
             if not settings.DISABLE_CLIP:
                 if timestamp_sec - last_scene_encode >= settings.CLIP_SCENE_INTERVAL:
                     try:
@@ -134,19 +134,6 @@ class VideoProcessor:
                         last_scene_encode = timestamp_sec
                     except Exception as e:
                         log(f"⚠️  Scene encode error: {e}")
-
-                for event in events:
-                    if event.get("event_type") in ("PERSON_ENTERED", "OBJECT_DETECTED"):
-                        bbox = event.get("bbox")
-                        if bbox:
-                            try:
-                                emb = embedding_engine.encode_frame(frame)
-                                event["embedding"] = emb.tolist()
-                                _, attrs = embedding_engine.classify_crop_attributes(frame, bbox)
-                                if attrs:
-                                    event["attributes"] = attrs
-                            except Exception as exc:
-                                log(f"⚠️  Event encoding error: {exc}")
 
             # --- Save Events ---
             if events:
