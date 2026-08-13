@@ -10,6 +10,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 class ChatRequest(BaseModel):
     question: str
     history: list[dict] = []
+    session_id: str | None = None
 
 
 class SearchRequest(BaseModel):
@@ -32,6 +33,7 @@ def chat(req: ChatRequest):
     result = chat_service.ask(
         question=req.question,
         history=req.history,
+        session_id=req.session_id,
     )
     return result
 

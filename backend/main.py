@@ -40,12 +40,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api.routes.visual import router as visual_router
+
 app.include_router(system_router)
 app.include_router(camera_router)
 app.include_router(events_router)
 app.include_router(embeddings_router)
 app.include_router(video_router)
 app.include_router(chat_router)
+app.include_router(visual_router)
 
 
 @app.get("/")

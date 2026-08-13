@@ -38,7 +38,7 @@ class Settings:
 
     YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n.pt")
     TRACKER = os.getenv("TRACKER", "botsort.yaml")
-    CLIP_MODEL = os.getenv("CLIP_MODEL", "ViT-B-16-SigLIP-2")
+    CLIP_MODEL = os.getenv("CLIP_MODEL", "hf-hub:apple/MobileCLIP-S0")
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")

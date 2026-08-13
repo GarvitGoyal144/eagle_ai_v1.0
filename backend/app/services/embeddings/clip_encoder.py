@@ -12,7 +12,7 @@ class CLIPEncoder(BaseEncoder):
 
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() and settings.DEVICE.lower() != "cpu" else "cpu"
-        model_name = settings.CLIP_MODEL or "ViT-B-32"
+        model_name = settings.CLIP_MODEL or "hf-hub:apple/MobileCLIP-S0"
 
         print(f"Loading CLIP ({model_name}) on {self.device.upper()}...")
 

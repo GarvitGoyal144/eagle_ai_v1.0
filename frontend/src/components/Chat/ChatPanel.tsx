@@ -1,8 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import api from "../../api/api";
-import type { ChatMessage, ChatResponse } from "../../types/event";
+import type { ChatMessage, ChatResponse, VisualRef } from "../../types/event";
 
-function ChatPanel() {
+interface Props {
+    sessionId?: string;
+}
+
+function ChatPanel({ sessionId }: Props) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -33,12 +37,14 @@ function ChatPanel() {
             const res = await api.post<ChatResponse>("/chat", {
                 question,
                 history,
+                session_id: sessionId,
             });
 
             const assistantMsg: ChatMessage = {
                 role: "assistant",
                 content: res.data.answer,
                 sources: res.data.sources,
+                visual_refs: res.data.visual_refs,
             };
             setMessages((prev) => [...prev, assistantMsg]);
         } catch (err: any) {
@@ -102,23 +108,24 @@ function ChatPanel() {
                     <div className="h-full flex items-center justify-center">
                         <div className="text-center space-y-2">
                             <p className="text-slate-600 text-xs">🧠</p>
-                            <p className="text-slate-500 text-xs italic">
-                                Ask me anything about what the camera has seen...
+                            <p className="text-slate-500 text-xs text-left max-w-sm mx-auto leading-relaxed mt-2">
+                                Upload and process a video, then ask me:
                             </p>
-                            <div className="flex flex-wrap gap-1.5 justify-center mt-2">
+                            <div className="flex flex-col gap-1.5 mt-3 max-w-xs mx-auto">
                                 {[
-                                    "Who entered recently?",
-                                    "Any suspicious activity?",
-                                    "How many people today?",
+                                    "What objects were detected?",
+                                    "Show me when the person appeared",
+                                    "Describe what happened in the video",
+                                    "Were there any vehicles?"
                                 ].map((suggestion) => (
                                     <button
                                         key={suggestion}
                                         onClick={() => {
                                             setInput(suggestion);
                                         }}
-                                        className="text-[10px] text-slate-400 bg-slate-900 border border-slate-800 rounded-full px-2.5 py-1 hover:border-slate-600 hover:text-slate-300 transition-colors"
+                                        className="text-[10px] text-slate-400 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 hover:border-slate-600 hover:text-slate-300 transition-colors text-left"
                                     >
-                                        {suggestion}
+                                        • {suggestion}
                                     </button>
                                 ))}
                             </div>
@@ -143,6 +150,39 @@ function ChatPanel() {
                                     {msg.content}
                                 </div>
                             </div>
+                            
+                            {msg.role === "assistant" && msg.visual_refs && msg.visual_refs.length > 0 && (
+                                <div className="mt-2 ml-1 flex flex-wrap gap-2">
+                                    {msg.visual_refs.slice(0, 3).map((ref: VisualRef, j: number) => (
+                                        <div key={j} className="bg-slate-900 border border-slate-700/50 rounded p-1 w-32 shrink-0">
+                                            <div className="relative aspect-video bg-black rounded overflow-hidden mb-1 group">
+                                                <img 
+                                                    src={`${api.defaults.baseURL}${ref.frame_url}`} 
+                                                    alt={ref.label}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMzMzMiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZmlsbD0iIzc3NyIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RXJyb3I8L3RleHQ+PC9zdmc+';
+                                                    }}
+                                                />
+                                                <a 
+                                                    href={`${api.defaults.baseURL}${ref.clip_url}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <span className="bg-blue-600 text-white text-[10px] px-2 py-1 rounded-full font-bold">▶ Play 5s Clip</span>
+                                                </a>
+                                                <div className="absolute top-1 left-1 bg-black/60 text-white text-[9px] px-1 rounded backdrop-blur-sm">
+                                                    📸 {ref.timestamp_display}
+                                                </div>
+                                            </div>
+                                            <div className="text-[9px] text-slate-400 truncate text-center" title={ref.label}>
+                                                {ref.label}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {/* Source citations (assistant messages only) */}
                             {msg.role === "assistant" &&

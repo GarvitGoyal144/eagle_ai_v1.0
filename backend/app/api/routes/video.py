@@ -35,3 +35,21 @@ async def upload_video(file: UploadFile = File(...)):
         "path": str(dest),
         "message": "Video saved. Processing engine initializing...",
     }
+from pydantic import BaseModel
+
+class ProcessRequest(BaseModel):
+    filename: str
+
+@router.post("/process")
+def process_video(req: ProcessRequest):
+    """Run YOLO and MobileCLIP on the uploaded video."""
+    video_path = settings.UPLOAD_FOLDER / req.filename
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video file not found")
+        
+    try:
+        from app.services.vision.video_processor import video_processor
+        insights = video_processor.process(str(video_path), req.filename)
+        return insights
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

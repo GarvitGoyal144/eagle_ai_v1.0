@@ -65,15 +65,19 @@ class ChatService:
     2. Cloud LLM via Groq API (llama-3.1-8b-instant, gemma2-9b-it)
     """
 
-    def _get_recent_events(self, limit: int = 20) -> list[dict]:
-        """Fetch the most recent events from MongoDB."""
+    def _get_recent_events(self, session_id: str | None = None, limit: int = 10) -> list[dict]:
+        """Fetch the most recent events from MongoDB, optionally filtered by session."""
         if mongodb.database is None:
             return []
+
+        query = {}
+        if session_id:
+            query["session_id"] = session_id
 
         try:
             return list(
                 mongodb.database.events.find(
-                    {},
+                    query,
                     {"_id": 0, "embedding": 0},
                 ).sort("timestamp", -1).limit(limit)
             )
@@ -95,13 +99,11 @@ class ChatService:
             confidence = ev.get("confidence")
             attrs = ev.get("attributes")
 
-            line = f"- [{ts}] {event_type}: Track #{track_id}"
-            if class_name:
-                line += f" ({class_name})"
+            line = f"T{track_id} {class_name} @ {ts}"
             if attrs:
-                line += f" visual_attributes=[{', '.join(attrs)}]"
+                line += f" ({', '.join(attrs)})"
             if confidence:
-                line += f" confidence={confidence:.0%}"
+                line += f" {confidence:.0%}"
             lines.append(line)
 
         return "\n".join(lines)
@@ -155,17 +157,25 @@ class ChatService:
 
         return messages
 
-    def ask(self, question: str, history: list[dict] | None = None) -> dict:
+    def ask(self, question: str, history: list[dict] | None = None, session_id: str | None = None) -> dict:
         """
         Full RAG pipeline: retrieve context → build prompt → call LLM.
         """
         history = history or []
+        # Trim history to last 4 turns (2 user, 2 assistant) to save tokens
+        if len(history) > 4:
+            history = history[-4:]
 
         # Step 1: Hybrid search (Keyword + Semantic)
-        search_results = search_service.search(question)
+        # Note: We limit search to top 3 for token optimization
+        search_results = search_service.search(question, top_k=3)
+
+        # Filter search results if session_id is provided
+        if session_id:
+            search_results = [r for r in search_results if r.get("session_id") == session_id or not r.get("session_id")]
 
         # Step 2: Fetch recent events for temporal context
-        recent_events = self._get_recent_events(limit=20)
+        recent_events = self._get_recent_events(session_id=session_id, limit=10)
 
         # Step 3: Build messages
         messages = self._build_messages(
@@ -180,15 +190,37 @@ class ChatService:
         else:
             answer = self._call_ollama(messages)
 
-        # Step 5: Format sources
-        sources = [
-            {k: v for k, v in r.items() if k != "embedding"}
-            for r in search_results
-        ]
+        # Step 5: Format sources and visual refs
+        sources = []
+        visual_refs = []
+        
+        for r in search_results:
+            source = {k: v for k, v in r.items() if k != "embedding"}
+            sources.append(source)
+            
+            # Extract visual evidence refs if they have frame_number
+            if r.get("type") == "event" and r.get("frame_number") is not None:
+                evt_id = r.get("event_id")
+                cls_name = r.get("class_name", "object")
+                ts_sec = r.get("timestamp_sec", 0)
+                
+                # Format MM:SS
+                m, s = divmod(int(ts_sec), 60)
+                ts_display = f"{m:02d}:{s:02d}"
+                
+                visual_refs.append({
+                    "event_id": evt_id,
+                    "label": f"{cls_name} detected",
+                    "timestamp_sec": ts_sec,
+                    "timestamp_display": ts_display,
+                    "frame_url": f"/visual/frame/{evt_id}",
+                    "clip_url": f"/visual/clip/{evt_id}"
+                })
 
         return {
             "answer": answer,
             "sources": sources,
+            "visual_refs": visual_refs,
             "provider": provider,
         }
 
@@ -213,6 +245,7 @@ class ChatService:
                     "model": model,
                     "messages": messages,
                     "temperature": 0.3,
+                    "max_tokens": 512,
                 },
                 timeout=30.0,
             )

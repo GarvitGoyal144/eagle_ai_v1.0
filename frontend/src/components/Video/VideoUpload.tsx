@@ -1,27 +1,41 @@
 import { useState } from "react";
 import api from "../../api/api";
 
+import type { VideoInsights } from "../../types/event";
+
 interface Props {
-    onStartProcessing: () => void;
+    onInsightsReady: (insights: VideoInsights, sessionId: string) => void;
 }
 
-function VideoUpload({ onStartProcessing }: Props) {
+function VideoUpload({ onInsightsReady }: Props) {
     const [file, setFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
+    const [statusText, setStatusText] = useState("");
 
     const handleProcess = async () => {
         if (!file) return;
         setUploading(true);
-        onStartProcessing(); // Stops the live camera feed automatically in UI
+        setStatusText("Uploading...");
 
         const formData = new FormData();
         formData.append("file", file);
 
         try {
+            // 1. Upload
+            setStatusText("Uploading video...");
             await api.post("/video/upload", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
-            console.log("Video uploaded successfully");
+            
+            // 2. Process
+            setStatusText("Analyzing video (this may take a minute)...");
+            const res = await api.post<VideoInsights>("/video/process", {
+                filename: file.name
+            });
+            
+            console.log("Processing complete", res.data);
+            onInsightsReady(res.data, res.data.session_id);
+            setStatusText("");
         } catch (err) {
             console.error("Failed to upload video:", err);
         } finally {
@@ -30,10 +44,15 @@ function VideoUpload({ onStartProcessing }: Props) {
     };
 
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg space-y-3">
-            <h2 className="text-base font-bold text-slate-200">
-                Video Upload
-            </h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
+            <div>
+                <h2 className="text-lg font-bold text-slate-200">
+                    📁 Upload Video
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                    Upload an MP4 file to run YOLO object detection and MobileCLIP analysis.
+                </p>
+            </div>
 
             <div className="flex items-center gap-3">
                 <input
@@ -59,12 +78,18 @@ function VideoUpload({ onStartProcessing }: Props) {
                 </span>
             </div>
 
+            {statusText && (
+                <div className="text-xs text-blue-400 text-center animate-pulse py-1">
+                    {statusText}
+                </div>
+            )}
+
             <button
                 disabled={!file || uploading}
                 onClick={handleProcess}
-                className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors shadow"
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors shadow-md"
             >
-                {uploading ? "Uploading & Processing..." : "Process Video"}
+                {uploading ? "Processing..." : "Analyze Video ▶"}
             </button>
         </div>
     );
