@@ -73,6 +73,8 @@ class EventService:
         timestamp: float,
         caption: str = "",
         category: str = "normal",
+        camera: str = "webcam",
+        snapshot_id: str = "",
     ):
         """
         Save a scene embedding snapshot with dataset caption to MongoDB.
@@ -82,11 +84,11 @@ class EventService:
 
         try:
             doc = {
-                "snapshot_id": str(uuid.uuid4()),
+                "snapshot_id": snapshot_id or str(uuid.uuid4()),
                 "embedding": embedding.tolist() if hasattr(embedding, "tolist") else embedding,
                 "caption": caption,
                 "category": category,
-                "camera": event_engine.source_name,
+                "camera": camera,
                 "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc),
             }
 

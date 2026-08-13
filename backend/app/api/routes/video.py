@@ -1,3 +1,4 @@
+import traceback
 import shutil
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
@@ -35,6 +36,7 @@ async def upload_video(file: UploadFile = File(...)):
         "path": str(dest),
         "message": "Video saved. Processing engine initializing...",
     }
+
 from pydantic import BaseModel
 
 class ProcessRequest(BaseModel):
@@ -46,10 +48,13 @@ def process_video(req: ProcessRequest):
     video_path = settings.UPLOAD_FOLDER / req.filename
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video file not found")
-        
+
     try:
         from app.services.vision.video_processor import video_processor
         insights = video_processor.process(str(video_path), req.filename)
         return insights
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Print full traceback to Render logs so we can diagnose exactly where it crashed
+        tb = traceback.format_exc()
+        print(f"❌ /video/process CRASHED:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
