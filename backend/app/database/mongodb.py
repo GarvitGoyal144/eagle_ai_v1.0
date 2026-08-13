@@ -51,10 +51,10 @@ class MongoDB:
 
     def is_connected(self) -> bool:
         """Ping MongoDB to verify live connection."""
-        if self.client is None:
+        if self.database is None:
             return False
         try:
-            self.client.admin.command("ping")
+            self.database.command("ping")
             return True
         except Exception:
             return False
