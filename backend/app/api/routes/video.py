@@ -1,3 +1,4 @@
+import sys
 import traceback
 import shutil
 
@@ -37,6 +38,7 @@ async def upload_video(file: UploadFile = File(...)):
         "message": "Video saved. Processing engine initializing...",
     }
 
+
 from pydantic import BaseModel
 
 class ProcessRequest(BaseModel):
@@ -45,16 +47,24 @@ class ProcessRequest(BaseModel):
 @router.post("/process")
 def process_video(req: ProcessRequest):
     """Run YOLO and MobileCLIP on the uploaded video."""
+    print(f"📥 /video/process called for: {req.filename}", flush=True)
+    
     video_path = settings.UPLOAD_FOLDER / req.filename
     if not video_path.exists():
+        print(f"❌ Video file not found: {video_path}", flush=True)
         raise HTTPException(status_code=404, detail="Video file not found")
 
     try:
         from app.services.vision.video_processor import video_processor
+        print(f"🚀 Starting video_processor.process()...", flush=True)
         insights = video_processor.process(str(video_path), req.filename)
+        print(f"✅ video_processor.process() returned successfully", flush=True)
         return insights
     except Exception as e:
-        # Print full traceback to Render logs so we can diagnose exactly where it crashed
+        # Print the FULL traceback to Render logs
         tb = traceback.format_exc()
-        print(f"❌ /video/process CRASHED:\n{tb}")
+        print(f"❌ /video/process CRASHED with {type(e).__name__}:", flush=True)
+        print(tb, flush=True)
+        sys.stdout.flush()
+        sys.stderr.flush()
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")

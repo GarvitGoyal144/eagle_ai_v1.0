@@ -1,5 +1,7 @@
 import gc
+import sys
 import time
+import traceback
 import cv2
 import uuid
 from typing import Dict, Any
@@ -9,6 +11,13 @@ from app.services.detection_service import detection_service
 from app.services.event_engine import event_engine
 from app.services.event_service import event_service
 from app.services.embeddings.embedding_engine import embedding_engine
+
+
+def log(msg: str):
+    """Flush-safe logging that always appears in Render logs."""
+    print(msg, flush=True)
+    sys.stdout.flush()
+
 
 class VideoProcessor:
     """
@@ -21,24 +30,29 @@ class VideoProcessor:
         """
         Process the entire video synchronously.
         Returns VideoInsights dictionary.
-        Memory-safe: explicitly deletes each frame after use and runs gc.collect().
         """
-        print(f"🎬 Starting processing for {filename} at {video_path}")
+        log(f"🎬 [STEP 1/6] Starting processing for {filename} at {video_path}")
         start_time = time.time()
         session_id = str(uuid.uuid4())
 
+        # Step 2: Open video
+        log(f"📂 [STEP 2/6] Opening video file...")
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
-            print(f"❌ Failed to open video {video_path}")
+            log(f"❌ Failed to open video {video_path}")
             return {}
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        log(f"📊 Video info: {total_frames} frames, {fps:.1f} FPS, ~{total_frames/fps:.1f}s duration")
 
-        # Hard cap: process at max 2 FPS equivalent on Render free tier
-        # This keeps video processing memory predictable and safe
+        # Adaptive sampling
         target_fps = 2.0 if settings.DISABLE_CLIP else 5.0
         skip_frames = max(1, int(fps / target_fps))
+        log(f"⚙️  Sampling: every {skip_frames} frames (~{target_fps} FPS), CLIP={'OFF' if settings.DISABLE_CLIP else 'ON'}")
+
+        # Set the event engine source name for this session
+        event_engine.set_source(filename)
 
         # Stats
         total_detections = 0
@@ -49,7 +63,9 @@ class VideoProcessor:
         frames_sampled = 0
 
         last_scene_encode = -settings.CLIP_SCENE_INTERVAL
-        gc_interval = 10  # Log progress every 10 processed frames so we can see it's moving
+
+        # Step 3: Load YOLO model (lazy, happens on first .track() call)
+        log(f"🔄 [STEP 3/6] Starting frame-by-frame processing...")
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -59,18 +75,19 @@ class VideoProcessor:
             frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
 
             if frame_idx % skip_frames != 0:
-                # Explicitly release skipped frames immediately
                 del frame
                 continue
 
             frames_sampled += 1
             timestamp_sec = round(frame_idx / fps, 2)
 
-            # 1. YOLO Detection
+            # --- YOLO Detection ---
             try:
                 detections = detection_service.track(frame)
             except Exception as exc:
-                print(f"Detection error at frame {frame_idx}: {exc}")
+                log(f"⚠️  Detection error at frame {frame_idx}: {exc}")
+                traceback.print_exc(file=sys.stdout)
+                sys.stdout.flush()
                 del frame
                 continue
 
@@ -80,19 +97,24 @@ class VideoProcessor:
                 cls_name = d["class_name"]
                 class_counts[cls_name] = class_counts.get(cls_name, 0) + 1
 
-            # 2. Event Generation
-            events = event_engine.process(detections, source_name=filename)
+            # --- Event Generation ---
+            try:
+                events = event_engine.process(detections)
+            except Exception as exc:
+                log(f"⚠️  Event engine error at frame {frame_idx}: {exc}")
+                traceback.print_exc(file=sys.stdout)
+                sys.stdout.flush()
+                events = []
 
-            # Always tag events with video metadata for on-demand visual retrieval
+            # Tag events with video metadata
             for event in events:
                 event["frame_number"] = frame_idx
                 event["timestamp_sec"] = timestamp_sec
                 event["video_filename"] = filename
                 event["session_id"] = session_id
 
-            # 3. Vision Encoding (only when CLIP is enabled)
+            # --- Vision Encoding (only when CLIP is enabled) ---
             if not settings.DISABLE_CLIP:
-                # Scene snapshot every N seconds
                 if timestamp_sec - last_scene_encode >= settings.CLIP_SCENE_INTERVAL:
                     try:
                         res = embedding_engine.classify_scene_caption(frame)
@@ -107,9 +129,8 @@ class VideoProcessor:
                         scene_snapshots_saved += 1
                         last_scene_encode = timestamp_sec
                     except Exception as e:
-                        print(f"Scene encode error: {e}")
+                        log(f"⚠️  Scene encode error: {e}")
 
-                # Event embeddings
                 for event in events:
                     if event.get("event_type") in ("PERSON_ENTERED", "OBJECT_DETECTED"):
                         bbox = event.get("bbox")
@@ -121,24 +142,25 @@ class VideoProcessor:
                                 if attrs:
                                     event["attributes"] = attrs
                             except Exception as exc:
-                                print(f"Event encoding error: {exc}")
+                                log(f"⚠️  Event encoding error: {exc}")
 
-            # 4. Save Events
+            # --- Save Events ---
             if events:
-                event_service.save_events(events)
-                events_saved += len(events)
+                try:
+                    event_service.save_events(events)
+                    events_saved += len(events)
+                except Exception as exc:
+                    log(f"⚠️  Event save error: {exc}")
 
-            # ✅ KEY: explicitly release frame memory after each processed frame
             del frame
 
-            # Force garbage collection periodically to prevent accumulation
-            if frames_sampled % gc_interval == 0:
+            # Progress logging every 10 frames
+            if frames_sampled % 10 == 0:
                 gc.collect()
-                print(f"  → Frame {frame_idx}/{total_frames} | {frames_sampled} processed | {events_saved} events saved")
+                elapsed = round(time.time() - start_time, 1)
+                log(f"  → Frame {frame_idx}/{total_frames} | {frames_sampled} sampled | {events_saved} events | {elapsed}s elapsed")
 
         cap.release()
-
-        # Final cleanup
         gc.collect()
 
         duration = round(total_frames / fps, 1) if fps > 0 else 0
@@ -157,7 +179,7 @@ class VideoProcessor:
             "session_id": session_id
         }
 
-        print(f"✅ Finished processing {filename} in {proc_time}s | {events_saved} events saved")
+        log(f"✅ [STEP 6/6] Finished processing {filename} in {proc_time}s | {events_saved} events saved")
         return insights
 
 video_processor = VideoProcessor()
