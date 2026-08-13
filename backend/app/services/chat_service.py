@@ -70,12 +70,16 @@ class ChatService:
         if mongodb.database is None:
             return []
 
-        return list(
-            mongodb.database.events.find(
-                {},
-                {"_id": 0, "embedding": 0},
-            ).sort("timestamp", -1).limit(limit)
-        )
+        try:
+            return list(
+                mongodb.database.events.find(
+                    {},
+                    {"_id": 0, "embedding": 0},
+                ).sort("timestamp", -1).limit(limit)
+            )
+        except Exception as exc:
+            print(f"Chat service events query note: {exc}")
+            return []
 
     def _format_events_context(self, events: list[dict]) -> str:
         """Format events list into a readable string for the LLM."""

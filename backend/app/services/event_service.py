@@ -32,15 +32,19 @@ class EventService:
         """Fetch recent events from MongoDB with pagination support."""
         if mongodb.database is None:
             return []
-        return list(
-            mongodb.database.events.find(
-                {},
-                {"_id": 0}
+        try:
+            return list(
+                mongodb.database.events.find(
+                    {},
+                    {"_id": 0}
+                )
+                .sort("timestamp", -1)
+                .skip(offset)
+                .limit(limit)
             )
-            .sort("timestamp", -1)
-            .skip(offset)
-            .limit(limit)
-        )
+        except Exception as exc:
+            print(f"Database query note in get_events: {exc}")
+            return []
 
     def save_events(self, events):
         """Save detection/tracking events to MongoDB."""

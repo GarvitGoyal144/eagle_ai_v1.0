@@ -165,23 +165,29 @@ class SearchService:
 
         results = []
 
+        results = []
+
         # ── Search scene embeddings ──
-        scenes = list(
-            mongodb.database.scene_embeddings.find(
-                {},
-                {
-                    "_id": 0,
-                    "snapshot_id": 1,
-                    "embedding": 1,
-                    "camera": 1,
-                    "timestamp": 1,
-                    "caption": 1,
-                    "category": 1,
-                },
+        try:
+            scenes = list(
+                mongodb.database.scene_embeddings.find(
+                    {},
+                    {
+                        "_id": 0,
+                        "snapshot_id": 1,
+                        "embedding": 1,
+                        "camera": 1,
+                        "timestamp": 1,
+                        "caption": 1,
+                        "category": 1,
+                    },
+                )
+                .sort("timestamp", -1)
+                .limit(200)
             )
-            .sort("timestamp", -1)
-            .limit(200)
-        )
+        except Exception as exc:
+            print(f"Scene search query note: {exc}")
+            scenes = []
 
         for scene in scenes:
             emb = scene.get("embedding")
@@ -208,25 +214,29 @@ class SearchService:
             })
 
         # ── Search event crop embeddings ──
-        events_with_emb = list(
-            mongodb.database.events.find(
-                {"embedding": {"$exists": True}},
-                {
-                    "_id": 0,
-                    "event_id": 1,
-                    "event_type": 1,
-                    "track_id": 1,
-                    "class_name": 1,
-                    "confidence": 1,
-                    "camera": 1,
-                    "timestamp": 1,
-                    "embedding": 1,
-                    "attributes": 1,
-                },
+        try:
+            events_with_emb = list(
+                mongodb.database.events.find(
+                    {"embedding": {"$exists": True}},
+                    {
+                        "_id": 0,
+                        "event_id": 1,
+                        "event_type": 1,
+                        "track_id": 1,
+                        "class_name": 1,
+                        "confidence": 1,
+                        "camera": 1,
+                        "timestamp": 1,
+                        "embedding": 1,
+                        "attributes": 1,
+                    },
+                )
+                .sort("timestamp", -1)
+                .limit(200)
             )
-            .sort("timestamp", -1)
-            .limit(200)
-        )
+        except Exception as exc:
+            print(f"Crop search query note: {exc}")
+            events_with_emb = []
 
         for event in events_with_emb:
             emb = event.get("embedding")
