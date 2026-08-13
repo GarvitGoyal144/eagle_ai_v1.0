@@ -3,9 +3,6 @@ import api from "../../api/api";
 import type { Event } from "../../types/event";
 
 function eventLabel(event: Event): string {
-    if (event.event_type === "VEHICLE_COLLISION") {
-        return `⚠️ VEHICLE COLLISION ALERT (Track #${event.track_id})`;
-    }
     if (event.event_type === "TRACK_LOST") {
         const cls = event.class_name ? ` (${event.class_name})` : "";
         return `Track #${event.track_id}${cls} left scene`;
@@ -21,8 +18,6 @@ function eventLabel(event: Event): string {
 
 function eventColor(eventType?: string): string {
     switch (eventType) {
-        case "VEHICLE_COLLISION":
-            return "text-rose-400 font-semibold flex items-center gap-1";
         case "PERSON_ENTERED":
             return "text-emerald-400";
         case "OBJECT_DETECTED":
@@ -79,11 +74,7 @@ function EventTimeline() {
                     events.map((event) => (
                         <div
                             key={event.event_id}
-                            className={`flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border text-xs transition-colors ${
-                                event.event_type === "VEHICLE_COLLISION"
-                                    ? "border-rose-800/60 bg-rose-950/20"
-                                    : "border-slate-800/80 hover:border-slate-700"
-                            }`}
+                            className="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800/80 hover:border-slate-700 text-xs transition-colors"
                         >
                             <span className={eventColor(event.event_type)}>
                                 {eventLabel(event)}
