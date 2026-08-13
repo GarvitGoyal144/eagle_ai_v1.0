@@ -41,10 +41,11 @@ function ChatPanel() {
                 sources: res.data.sources,
             };
             setMessages((prev) => [...prev, assistantMsg]);
-        } catch (err) {
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail || err?.message || "Backend server unreachable";
             const errorMsg: ChatMessage = {
                 role: "assistant",
-                content: "⚠️ Failed to reach the AI assistant. Please try again in a moment.",
+                content: `⚠️ Could not connect to AI backend (${detail}). Ensure backend is running and VITE_API_URL is configured.`,
             };
             setMessages((prev) => [...prev, errorMsg]);
             console.error("Chat error:", err);
