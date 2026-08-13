@@ -46,8 +46,8 @@ class VideoProcessor:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         log(f"📊 Video info: {total_frames} frames, {fps:.1f} FPS, ~{total_frames/fps:.1f}s duration")
 
-        # Adaptive sampling
-        target_fps = 2.0 if settings.DISABLE_CLIP else 5.0
+        # Adaptive sampling (1.5 FPS is optimal for surveillance video processing without timeout)
+        target_fps = 1.5
         skip_frames = max(1, int(fps / target_fps))
         log(f"⚙️  Sampling: every {skip_frames} frames (~{target_fps} FPS), CLIP={'OFF' if settings.DISABLE_CLIP else 'ON'}")
 

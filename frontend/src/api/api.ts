@@ -5,7 +5,7 @@ const baseURL = rawUrl.replace(/\/+$/, "");
 
 const api = axios.create({
     baseURL: baseURL,
-    timeout: 60000, // 60s timeout to gracefully handle Render cold-starts
+    timeout: 300000, // 5 min timeout for video processing on cloud CPU
     headers: {
         "Content-Type": "application/json",
     },

@@ -85,7 +85,7 @@ class CaptionEngine:
         # ── 2. Load dataset captions from merged_captions.json if present ──
         dataset_path = Path("data/merged_captions.json")
         if not dataset_path.exists():
-            dataset_path = settings.BASE_DIR.parent / "data" / "merged_captions.json"
+            dataset_path = Path(__file__).resolve().parents[4] / "data" / "merged_captions.json"
 
         if dataset_path.exists():
             try:
