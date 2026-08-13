@@ -1,5 +1,11 @@
+import os
 import cv2
 import numpy as np
+
+# Suppress HF unauthenticated token notice in logs
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
 import open_clip
 import torch
 from PIL import Image
