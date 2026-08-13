@@ -37,7 +37,7 @@ class Settings:
     CLIP_FOLDER = Path(os.getenv("CLIP_FOLDER", "data/clips"))
 
     YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n.pt")
-    TRACKER = os.getenv("TRACKER", "botsort.yaml")
+    TRACKER = os.getenv("TRACKER", "ocsort.yaml")
     CLIP_MODEL = os.getenv("CLIP_MODEL", "MobileCLIP2-S0")
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
