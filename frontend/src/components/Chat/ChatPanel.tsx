@@ -48,10 +48,14 @@ function ChatPanel({ sessionId }: Props) {
             };
             setMessages((prev) => [...prev, assistantMsg]);
         } catch (err: any) {
-            const detail = err?.response?.data?.detail || err?.message || "Backend server unreachable";
+            const detail = err?.response?.data?.detail || err?.message || "Server starting up";
+            const isNetworkErr = !err?.response;
+            
             const errorMsg: ChatMessage = {
                 role: "assistant",
-                content: `⚠️ Could not connect to AI backend (${detail}). Ensure backend is running and VITE_API_URL is configured.`,
+                content: isNetworkErr
+                    ? `⚠️ Could not reach AI backend (${detail}). If deploying on Render, the backend may be cold-starting or finishing a redeploy. Please wait 15-30 seconds and try again!`
+                    : `⚠️ Backend error: ${detail}`,
             };
             setMessages((prev) => [...prev, errorMsg]);
             console.error("Chat error:", err);
