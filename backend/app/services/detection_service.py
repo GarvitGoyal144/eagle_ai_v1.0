@@ -1,3 +1,9 @@
+import os
+
+# Disable Ultralytics hub/update checks to prevent loading hangs in offline/firewalled cloud environments
+os.environ["ULTRALYTICS_OFFLINE"] = "true"
+os.environ["YOLO_VERBOSE"] = "False"
+
 import torch
 from ultralytics import YOLO
 
