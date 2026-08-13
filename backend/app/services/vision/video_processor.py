@@ -124,7 +124,11 @@ class VideoProcessor:
                             caption=res.get("caption", ""),
                             category=res.get("category", "normal"),
                             camera=filename,
-                            snapshot_id=f"scene_{session_id}_{frame_idx}"
+                            snapshot_id=f"scene_{session_id}_{frame_idx}",
+                            frame_number=frame_idx,
+                            timestamp_sec=timestamp_sec,
+                            video_filename=filename,
+                            session_id=session_id,
                         )
                         scene_snapshots_saved += 1
                         last_scene_encode = timestamp_sec

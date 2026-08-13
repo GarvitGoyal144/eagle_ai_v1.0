@@ -45,11 +45,8 @@ class Settings:
     # Default to groq (free cloud LLM) — NOT ollama (local only)
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-    # Auto-disable local CLIP on Render to stay within 512MB RAM (YOLO alone uses ~270MB).
-    # On machines with >1GB RAM or locally, CLIP can be enabled.
-    _on_render = os.getenv("RENDER") == "true"
-    _disable_clip_default = "true" if _on_render else "false"
-    DISABLE_CLIP = os.getenv("DISABLE_CLIP", _disable_clip_default).lower() == "true"
+    # Cloud-powered CLIP feature extraction (0 MB RAM overhead on Render)
+    DISABLE_CLIP = os.getenv("DISABLE_CLIP", "false").lower() == "true"
 
     DEVICE = os.getenv("DEVICE", "cpu")
 

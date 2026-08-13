@@ -200,22 +200,27 @@ class ChatService:
             sources.append(source)
             
             # Extract visual evidence refs if they have frame_number
-            if r.get("type") == "event" and r.get("frame_number") is not None:
-                evt_id = r.get("event_id")
-                cls_name = r.get("class_name", "object")
+            target_id = r.get("event_id") or r.get("snapshot_id")
+            if target_id and r.get("frame_number") is not None:
+                if r.get("type") == "scene":
+                    label = r.get("caption") or r.get("category") or "Scene Snapshot"
+                    if len(label) > 35:
+                        label = label[:32] + "..."
+                else:
+                    cls_name = r.get("class_name", "object")
+                    label = f"{cls_name} detected"
+
                 ts_sec = r.get("timestamp_sec", 0)
-                
-                # Format MM:SS
                 m, s = divmod(int(ts_sec), 60)
                 ts_display = f"{m:02d}:{s:02d}"
                 
                 visual_refs.append({
-                    "event_id": evt_id,
-                    "label": f"{cls_name} detected",
+                    "event_id": target_id,
+                    "label": label,
                     "timestamp_sec": ts_sec,
                     "timestamp_display": ts_display,
-                    "frame_url": f"/visual/frame/{evt_id}",
-                    "clip_url": f"/visual/clip/{evt_id}"
+                    "frame_url": f"/visual/frame/{target_id}",
+                    "clip_url": f"/visual/clip/{target_id}"
                 })
 
         return {

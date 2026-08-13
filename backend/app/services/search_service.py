@@ -37,11 +37,7 @@ class SearchService:
     """
     Hybrid Search Engine combining:
     1. Keyword/Text matching (MongoDB text & regex index)
-    2. Semantic vector search (SigLIP / CLIP embeddings)
-
-    Fix:
-    - Enriches scene snapshot hits with text summaries of nearby events (±5s)
-    - Retains full cosine similarity scores (no artificial degradation)
+    2. Semantic vector search (SigLIP / CLIP embeddings) with full visual clipping support
     """
 
     def _get_nearby_events_summary(self, timestamp) -> str:
@@ -64,7 +60,7 @@ class SearchService:
             )
 
             if not nearby:
-                return "General scene frame (no active track events)"
+                return "General scene frame"
 
             descriptions = []
             for ev in nearby:
@@ -88,7 +84,6 @@ class SearchService:
 
         results = []
 
-        # Try MongoDB text index search first
         try:
             matched = list(
                 mongodb.database.events.find(
@@ -108,13 +103,15 @@ class SearchService:
                     "confidence": doc.get("confidence"),
                     "camera": doc.get("camera", "webcam"),
                     "timestamp": doc.get("timestamp"),
+                    "frame_number": doc.get("frame_number"),
+                    "timestamp_sec": doc.get("timestamp_sec"),
+                    "video_filename": doc.get("video_filename"),
                     "score": round(min(1.0, float(doc.get("score", 0.5))), 4),
                     "search_type": "keyword",
                 })
         except Exception:
             pass
 
-        # Fallback to regex matching on class_name / event_type
         if len(results) < 3:
             pattern = re.compile(clean_query, re.IGNORECASE)
             regex_matched = list(
@@ -143,6 +140,9 @@ class SearchService:
                         "confidence": doc.get("confidence"),
                         "camera": doc.get("camera", "webcam"),
                         "timestamp": doc.get("timestamp"),
+                        "frame_number": doc.get("frame_number"),
+                        "timestamp_sec": doc.get("timestamp_sec"),
+                        "video_filename": doc.get("video_filename"),
                         "score": 0.85,
                         "search_type": "keyword",
                     })
@@ -151,23 +151,23 @@ class SearchService:
 
     def semantic_search(self, query: str, top_k: int = 50) -> list[dict]:
         """Semantic vector search over scene & crop embeddings."""
-        if mongodb.database is None or settings.DISABLE_CLIP:
+        if mongodb.database is None:
             return []
 
-        # Transform conversational query into descriptive image caption prompt for CLIP
         prompt = _transform_query_for_clip(query)
 
         try:
             query_embedding = embedding_engine.encode_query(prompt)
         except Exception as exc:
-            print(f"Embedding query error: {exc}")
+            print(f"Embedding query note: {exc}", flush=True)
+            return []
+
+        if query_embedding is None or np.all(query_embedding == 0):
             return []
 
         results = []
 
-        results = []
-
-        # ── Search scene embeddings ──
+        # ── 1. Search scene frame embeddings ──
         try:
             scenes = list(
                 mongodb.database.scene_embeddings.find(
@@ -180,13 +180,16 @@ class SearchService:
                         "timestamp": 1,
                         "caption": 1,
                         "category": 1,
+                        "frame_number": 1,
+                        "timestamp_sec": 1,
+                        "video_filename": 1,
                     },
                 )
                 .sort("timestamp", -1)
                 .limit(200)
             )
         except Exception as exc:
-            print(f"Scene search query note: {exc}")
+            print(f"Scene search query note: {exc}", flush=True)
             scenes = []
 
         for scene in scenes:
@@ -194,7 +197,7 @@ class SearchService:
             if emb is None:
                 continue
             score = _cosine_similarity(query_embedding, np.array(emb))
-            if score < 0.15:  # filter noise
+            if score < 0.12:
                 continue
 
             ts = scene.get("timestamp")
@@ -210,10 +213,13 @@ class SearchService:
                 "caption": caption,
                 "category": scene.get("category", "normal"),
                 "summary": nearby_summary,
+                "frame_number": scene.get("frame_number"),
+                "timestamp_sec": scene.get("timestamp_sec"),
+                "video_filename": scene.get("video_filename"),
                 "search_type": "semantic",
             })
 
-        # ── Search event crop embeddings ──
+        # ── 2. Search event crop embeddings ──
         try:
             events_with_emb = list(
                 mongodb.database.events.find(
@@ -229,13 +235,16 @@ class SearchService:
                         "timestamp": 1,
                         "embedding": 1,
                         "attributes": 1,
+                        "frame_number": 1,
+                        "timestamp_sec": 1,
+                        "video_filename": 1,
                     },
                 )
                 .sort("timestamp", -1)
                 .limit(200)
             )
         except Exception as exc:
-            print(f"Crop search query note: {exc}")
+            print(f"Crop search query note: {exc}", flush=True)
             events_with_emb = []
 
         for event in events_with_emb:
@@ -243,7 +252,7 @@ class SearchService:
             if emb is None:
                 continue
             score = _cosine_similarity(query_embedding, np.array(emb))
-            if score < 0.15:
+            if score < 0.12:
                 continue
 
             results.append({
@@ -256,6 +265,9 @@ class SearchService:
                 "confidence": event.get("confidence"),
                 "camera": event.get("camera", "webcam"),
                 "timestamp": event.get("timestamp"),
+                "frame_number": event.get("frame_number"),
+                "timestamp_sec": event.get("timestamp_sec"),
+                "video_filename": event.get("video_filename"),
                 "score": round(score, 4),
                 "search_type": "semantic",
             })

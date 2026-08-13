@@ -17,7 +17,10 @@ def get_event_metadata(event_id: str):
         
     event = mongodb.database.events.find_one({"event_id": event_id})
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+        # Check scene_embeddings collection as fallback
+        event = mongodb.database.scene_embeddings.find_one({"snapshot_id": event_id})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event or Scene not found")
         
     return event
 

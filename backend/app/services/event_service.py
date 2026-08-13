@@ -79,9 +79,13 @@ class EventService:
         category: str = "normal",
         camera: str = "webcam",
         snapshot_id: str = "",
+        frame_number: int = 0,
+        timestamp_sec: float = 0.0,
+        video_filename: str = "",
+        session_id: str = "",
     ):
         """
-        Save a scene embedding snapshot with dataset caption to MongoDB.
+        Save a scene embedding snapshot with dataset caption & video metadata to MongoDB.
         """
         if mongodb.database is None:
             return
@@ -94,6 +98,10 @@ class EventService:
                 "category": category,
                 "camera": camera,
                 "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc),
+                "frame_number": frame_number,
+                "timestamp_sec": timestamp_sec,
+                "video_filename": video_filename,
+                "session_id": session_id,
             }
 
             mongodb.database.scene_embeddings.insert_one(doc)
