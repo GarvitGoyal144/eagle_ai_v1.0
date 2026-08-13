@@ -35,8 +35,10 @@ class CLIPEncoder(BaseEncoder):
             print(f"Loading CLIP ({model_name}) on {self._device.upper()}...")
 
             pretrained = "openai"
-            if "MobileCLIP" in model_name:
-                pretrained = "dfn1b"
+            if "MobileCLIP2" in model_name:
+                pretrained = "dfndr2b"
+            elif "MobileCLIP" in model_name:
+                pretrained = "datacompdr"
 
             self.model, _, self.preprocess = open_clip.create_model_and_transforms(
                 model_name,
