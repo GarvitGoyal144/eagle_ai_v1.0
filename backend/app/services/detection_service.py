@@ -3,8 +3,13 @@ import os
 # Disable Ultralytics hub/update checks to prevent loading hangs in offline/firewalled cloud environments
 os.environ["ULTRALYTICS_OFFLINE"] = "true"
 os.environ["YOLO_VERBOSE"] = "False"
+# Cap threads to prevent CPU contention on Render's shared free-tier CPU
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import torch
+torch.set_num_threads(1)  # Limit PyTorch YOLO inference threads globally
+
 from ultralytics import YOLO
 
 from app.config.settings import settings

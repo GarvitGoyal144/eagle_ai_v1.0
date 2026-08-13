@@ -49,7 +49,7 @@ class VideoProcessor:
         frames_sampled = 0
 
         last_scene_encode = -settings.CLIP_SCENE_INTERVAL
-        gc_interval = 50  # Force GC every 50 processed frames
+        gc_interval = 10  # Log progress every 10 processed frames so we can see it's moving
 
         while cap.isOpened():
             ret, frame = cap.read()
