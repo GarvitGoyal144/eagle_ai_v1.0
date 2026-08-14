@@ -39,6 +39,23 @@ class ProcessRequest(BaseModel):
     filename: str
 
 
+@router.get("/progress/{filename}")
+def get_video_progress(filename: str):
+    """Return real-time progress percentage, frame counters, and detections for a video."""
+    from app.services.vision.video_processor import progress_store
+    prog = progress_store.get(filename)
+    if not prog:
+        return {
+            "status": "idle",
+            "progress": 0,
+            "current_frame": 0,
+            "total_frames": 0,
+            "detections": 0,
+            "step": "Ready for analysis",
+        }
+    return prog
+
+
 def _run_clip_embeddings_background(video_path: str, filename: str, session_id: str):
     """Run CLIP scene embedding in background after YOLO phase completes."""
     try:
