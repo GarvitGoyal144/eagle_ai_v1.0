@@ -38,22 +38,14 @@ def _transform_query_for_clip(query: str) -> str:
     return f"a surveillance camera photo of {q}"
 
 
-SYSTEM_PROMPT = """You are Eagle AI, a concise video surveillance assistant.
-Answer questions directly, accurately, and concisely based on the surveillance context below.
+SYSTEM_PROMPT = """You are Eagle AI, a surveillance video assistant. Answer in 1-3 short sentences. No headers, no bullet lists, no repetition.
+Base your answer only on the context below. Cite timestamps and track IDs. If evidence is absent, say so in one sentence.
 
-RECENT EVENTS:
+EVENTS:
 {events_context}
 
-MATCHED RESULTS:
-{search_context}
-
-RULES:
-- Be concise (2 to 4 sentences maximum).
-- Directly answer what was asked without unnecessary preamble, repetition, or long section headers.
-- Cite specific timestamps (MM:SS or HH:MM) and object labels/tracks when relevant.
-- If an incident, accident, or specific object is asked about, directly state whether evidence was observed and at what timestamp.
-- If no matching evidence exists in the context, state that clearly in one sentence.
-"""
+SEARCH MATCHES:
+{search_context}"""
 
 
 class ChatService:
@@ -247,8 +239,8 @@ class ChatService:
                 json={
                     "model": model,
                     "messages": messages,
-                    "temperature": 0.3,
-                    "max_tokens": 512,
+                    "temperature": 0.1,
+                    "max_tokens": 150,
                 },
                 timeout=30.0,
             )

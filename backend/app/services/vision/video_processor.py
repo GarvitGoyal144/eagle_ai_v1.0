@@ -10,7 +10,6 @@ from app.config.settings import settings
 from app.services.detection_service import detection_service
 from app.services.event_engine import event_engine
 from app.services.event_service import event_service
-from app.services.embeddings.embedding_engine import embedding_engine
 
 
 def log(msg: str):
@@ -21,22 +20,16 @@ def log(msg: str):
 
 class VideoProcessor:
     """
-    Processes video files frame-by-frame.
-    Extracts YOLO detections, optionally generates CLIP embeddings (when enabled),
-    and stores rich event metadata (frame_number, timestamp, video_filename).
+    Phase 1: YOLO-only local object detection.
+    Fast — runs entirely on-device with no network calls.
+    Phase 2 (CLIP semantic embeddings) runs in a FastAPI background task after this returns.
     """
 
     def process(self, video_path: str, filename: str) -> Dict[str, Any]:
-        """
-        Process the entire video synchronously.
-        Returns VideoInsights dictionary.
-        """
-        log(f"🎬 [STEP 1/6] Starting processing for {filename} at {video_path}")
+        log(f"🎬 Starting YOLO detection phase for {filename}...")
         start_time = time.time()
         session_id = str(uuid.uuid4())
 
-        # Step 2: Open video
-        log(f"📂 [STEP 2/6] Opening video file...")
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             log(f"❌ Failed to open video {video_path}")
@@ -44,28 +37,19 @@ class VideoProcessor:
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        log(f"📊 Video info: {total_frames} frames, {fps:.1f} FPS, ~{total_frames/fps:.1f}s duration")
+        log(f"📊 Video: {total_frames} frames @ {fps:.0f}fps = {total_frames/fps:.1f}s")
 
-        # Adaptive sampling (1.5 FPS is optimal for surveillance video processing without timeout)
-        target_fps = 1.5
-        skip_frames = max(1, int(fps / target_fps))
-        log(f"⚙️  Sampling: every {skip_frames} frames (~{target_fps} FPS), CLIP={'OFF' if settings.DISABLE_CLIP else 'ON'}")
+        # 2 FPS gives good coverage for a surveillance video (detect important events)
+        skip_frames = max(1, int(fps / 2.0))
+        log(f"⚙️  Sampling every {skip_frames} frames (2 FPS)")
 
-        # Set the event engine source name for this session
         event_engine.set_source(filename)
 
-        # Stats
         total_detections = 0
         unique_tracks = set()
-        class_counts = {}
+        class_counts: Dict[str, int] = {}
         events_saved = 0
-        scene_snapshots_saved = 0
         frames_sampled = 0
-
-        last_scene_encode = -settings.CLIP_SCENE_INTERVAL
-
-        # Step 3: Load YOLO model (lazy, happens on first .track() call)
-        log(f"🔄 [STEP 3/6] Starting frame-by-frame processing...")
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -81,13 +65,11 @@ class VideoProcessor:
             frames_sampled += 1
             timestamp_sec = round(frame_idx / fps, 2)
 
-            # --- YOLO Detection ---
+            # --- YOLO Detection (local, no network calls) ---
             try:
-                detections = detection_service.track(frame)
+                detections = detection_service.detect(frame)
             except Exception as exc:
-                log(f"⚠️  Detection error at frame {frame_idx}: {exc}")
-                traceback.print_exc(file=sys.stdout)
-                sys.stdout.flush()
+                log(f"⚠️ Detection error at frame {frame_idx}: {exc}")
                 del frame
                 continue
 
@@ -101,39 +83,15 @@ class VideoProcessor:
             try:
                 events = event_engine.process(detections)
             except Exception as exc:
-                log(f"⚠️  Event engine error at frame {frame_idx}: {exc}")
-                traceback.print_exc(file=sys.stdout)
-                sys.stdout.flush()
+                log(f"⚠️ Event engine error at frame {frame_idx}: {exc}")
                 events = []
 
-            # Tag events with video metadata
+            # Tag events with video metadata (needed for visual/clip retrieval)
             for event in events:
                 event["frame_number"] = frame_idx
                 event["timestamp_sec"] = timestamp_sec
                 event["video_filename"] = filename
                 event["session_id"] = session_id
-
-            # --- Vision Encoding (Scene Snapshots for Semantic Search & Visual Retrieval) ---
-            if not settings.DISABLE_CLIP:
-                if timestamp_sec - last_scene_encode >= settings.CLIP_SCENE_INTERVAL:
-                    try:
-                        res = embedding_engine.classify_scene_caption(frame)
-                        event_service.save_scene_embedding(
-                            embedding=res["embedding"],
-                            timestamp=time.time(),
-                            caption=res.get("caption", ""),
-                            category=res.get("category", "normal"),
-                            camera=filename,
-                            snapshot_id=f"scene_{session_id}_{frame_idx}",
-                            frame_number=frame_idx,
-                            timestamp_sec=timestamp_sec,
-                            video_filename=filename,
-                            session_id=session_id,
-                        )
-                        scene_snapshots_saved += 1
-                        last_scene_encode = timestamp_sec
-                    except Exception as e:
-                        log(f"⚠️  Scene encode error: {e}")
 
             # --- Save Events ---
             if events:
@@ -141,36 +99,33 @@ class VideoProcessor:
                     event_service.save_events(events)
                     events_saved += len(events)
                 except Exception as exc:
-                    log(f"⚠️  Event save error: {exc}")
+                    log(f"⚠️ Event save error: {exc}")
 
             del frame
 
-            # Progress logging every 10 frames
-            if frames_sampled % 10 == 0:
+            if frames_sampled % 20 == 0:
                 gc.collect()
                 elapsed = round(time.time() - start_time, 1)
-                log(f"  → Frame {frame_idx}/{total_frames} | {frames_sampled} sampled | {events_saved} events | {elapsed}s elapsed")
+                log(f"  → Frame {frame_idx}/{total_frames} | {events_saved} events | {elapsed}s")
 
         cap.release()
         gc.collect()
 
-        duration = round(total_frames / fps, 1) if fps > 0 else 0
         proc_time = round(time.time() - start_time, 2)
+        log(f"✅ YOLO phase done in {proc_time}s — {events_saved} events, {len(unique_tracks)} unique objects")
 
-        insights = {
+        return {
             "filename": filename,
-            "duration_seconds": duration,
+            "duration_seconds": round(total_frames / fps, 1) if fps > 0 else 0,
             "total_frames_sampled": frames_sampled,
             "total_detections": total_detections,
             "unique_tracks": len(unique_tracks),
             "class_counts": class_counts,
             "events_saved": events_saved,
-            "scene_snapshots_saved": scene_snapshots_saved,
+            "scene_snapshots_saved": 0,  # populated by CLIP background task
             "processing_time_seconds": proc_time,
-            "session_id": session_id
+            "session_id": session_id,
         }
 
-        log(f"✅ [STEP 6/6] Finished processing {filename} in {proc_time}s | {events_saved} events saved")
-        return insights
 
 video_processor = VideoProcessor()
