@@ -71,39 +71,40 @@ def _run_clip_embeddings_background(video_path: str, filename: str, session_id: 
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        # Sample 1 scene snapshot every 5 seconds
-        scene_interval_frames = int(fps * 5.0)
+        # Sample 4 strategic keyframes across the video (10%, 35%, 65%, 90%)
+        snapshot_frames = [
+            int(total_frames * 0.1),
+            int(total_frames * 0.35),
+            int(total_frames * 0.65),
+            max(0, int(total_frames * 0.9)),
+        ]
         snapshots = 0
 
-        frame_idx = 0
-        while cap.isOpened():
+        for frame_idx in snapshot_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
-            if not ret:
-                break
-            if frame_idx % scene_interval_frames == 0:
-                try:
-                    timestamp_sec = round(frame_idx / fps, 2)
-                    res = embedding_engine.classify_scene_caption(frame)
-                    event_service.save_scene_embedding(
-                        embedding=res["embedding"],
-                        timestamp=time.time(),
-                        caption=res.get("caption", ""),
-                        category=res.get("category", "normal"),
-                        camera=filename,
-                        snapshot_id=f"scene_{session_id}_{frame_idx}",
-                        frame_number=frame_idx,
-                        timestamp_sec=timestamp_sec,
-                        video_filename=filename,
-                        session_id=session_id,
-                    )
-                    snapshots += 1
-                    del frame
-                except Exception as e:
-                    print(f"⚠️ [CLIP BG] Scene encode error at frame {frame_idx}: {e}", flush=True)
-                    del frame
-            else:
+            if not ret or frame is None:
+                continue
+            try:
+                timestamp_sec = round(frame_idx / fps, 2)
+                res = embedding_engine.classify_scene_caption(frame)
+                event_service.save_scene_embedding(
+                    embedding=res["embedding"],
+                    timestamp=time.time(),
+                    caption=res.get("caption", ""),
+                    category=res.get("category", "normal"),
+                    camera=filename,
+                    snapshot_id=f"scene_{session_id}_{frame_idx}",
+                    frame_number=frame_idx,
+                    timestamp_sec=timestamp_sec,
+                    video_filename=filename,
+                    session_id=session_id,
+                )
+                snapshots += 1
                 del frame
-            frame_idx += 1
+            except Exception as e:
+                print(f"⚠️ [CLIP BG] Scene encode error at frame {frame_idx}: {e}", flush=True)
+                del frame
 
         cap.release()
         print(f"✅ [CLIP BG] Semantic embedding complete — {snapshots} scene snapshots saved for {filename}", flush=True)

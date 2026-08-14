@@ -46,30 +46,24 @@ class EventService:
             print(f"Database query note in get_events: {exc}", flush=True)
             return []
 
-    def save_events(self, events):
-        """Save detection/tracking events to MongoDB."""
-        if mongodb.database is None:
+    def save_events_bulk(self, events: list[dict]):
+        """Save a batch of detection events in a single network round-trip."""
+        if mongodb.database is None or not events:
             return
 
-        for event in events:
-            try:
-                event["event_id"] = str(uuid.uuid4())
-                mongodb.database.events.insert_one(event)
+        for ev in events:
+            if "event_id" not in ev:
+                ev["event_id"] = str(uuid.uuid4())
 
-                attrs_str = (
-                    f" [{', '.join(event['attributes'])}]"
-                    if event.get("attributes")
-                    else ""
-                )
-                cls_name = event.get("class_name", "object")
-                evt_type = event.get("event_type", "EVENT")
-                trk_id = event.get("track_id", "?")
-                print(
-                    f"✅ {evt_type}  Track #{trk_id} ({cls_name}){attrs_str}",
-                    flush=True
-                )
-            except Exception as exc:
-                print(f"Note: Could not save event to database: {exc}", flush=True)
+        try:
+            mongodb.database.events.insert_many(events, ordered=False)
+            print(f"✅ Saved {len(events)} events to database in single batch", flush=True)
+        except Exception as exc:
+            print(f"Note: Could not bulk save events: {exc}", flush=True)
+
+    def save_events(self, events):
+        """Save detection/tracking events to MongoDB (uses bulk save for speed)."""
+        self.save_events_bulk(events)
 
     def save_scene_embedding(
         self,
