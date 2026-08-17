@@ -74,7 +74,7 @@ settings = Settings()
 # Startup diagnostics
 if not os.getenv("MONGO_URI") and not os.getenv("MONGODB_URI"):
     print("⚠️  WARNING: MONGO_URI env var not set — using localhost fallback. Set MONGO_URI on Render/cloud.")
-if not settings.GROQ_API_KEY and settings.LLM_PROVIDER == "groq":
-    print("⚠️  WARNING: GROQ_API_KEY env var not set — chat will fail. Set GROQ_API_KEY on Render/cloud.")
+if not settings.GEMINI_API_KEY and settings.LLM_PROVIDER == "gemini":
+    print("⚠️  WARNING: GEMINI_API_KEY env var not set — chat will fail. Set GEMINI_API_KEY on Render/cloud.")
 print(f"🔧 LLM Provider: {settings.LLM_PROVIDER} | CORS: {settings.CORS_ORIGINS} | CLIP: {'DISABLED (memory safe)' if settings.DISABLE_CLIP else 'ENABLED'}")
 
