@@ -52,7 +52,7 @@ class ChatService:
     """
     RAG (Retrieval-Augmented Generation) chat service supporting both:
     1. Local LLM via Ollama (llama3.2)
-    2. Cloud LLM via Groq API (llama-3.1-8b-instant, gemma2-9b-it)
+    2. Cloud LLM via Gemini API (gemini-3.5-flash-lite)
     """
 
     def _get_recent_events(self, session_id: str | None = None, limit: int = 10) -> list[dict]:
@@ -175,8 +175,8 @@ class ChatService:
         # Step 4: Call selected LLM Provider (Groq or Ollama)
         provider = (settings.LLM_PROVIDER or "ollama").lower()
 
-        if provider == "groq":
-            answer = self._call_groq(messages)
+        if provider == "gemini":
+            answer = self._call_gemini(messages)
         else:
             answer = self._call_ollama(messages)
 
@@ -219,39 +219,41 @@ class ChatService:
             "provider": provider,
         }
 
-    def _call_groq(self, messages: list[dict]) -> str:
-        """Call Groq API (cloud LLM inference)."""
-        if not settings.GROQ_API_KEY:
+    def _call_gemini(self, messages: list[dict]) -> str:
+        """Call Gemini API (cloud LLM inference)."""
+        if not settings.GEMINI_API_KEY:
             return (
-                "⚠️ `GROQ_API_KEY` is not set in `.env`.\n"
-                "To use Groq Cloud LLM, add `GROQ_API_KEY=gsk_...` to your `.env` file."
+                "⚠️ `GEMINI_API_KEY` is not set in `.env`.\n"
+                "To use Gemini, add `GEMINI_API_KEY=...` to your `.env` file."
             )
 
-        model = settings.LLM_MODEL if "llama-3" in settings.LLM_MODEL or "gemma" in settings.LLM_MODEL else "llama-3.1-8b-instant"
+        model = settings.LLM_MODEL or "gemini-3.5-flash-lite"
+        
+        # Convert standard messages to Gemini format
+        gemini_contents = []
+        for msg in messages:
+            role = "user" if msg["role"] in ["user", "system"] else "model"
+            gemini_contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
 
         try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
             response = httpx.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.1,
-                    "max_tokens": 150,
-                },
+                url,
+                headers={"Content-Type": "application/json"},
+                json={"contents": gemini_contents},
                 timeout=30.0,
             )
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                return response.json()["candidates"][0]["content"]["parts"][0]["text"]
             else:
-                return f"⚠️ Groq API Error ({response.status_code}): {response.text}"
+                return f"⚠️ Gemini API Error ({response.status_code}): {response.text}"
         except httpx.TimeoutException:
-            return "⚠️ Groq API request timed out."
+            return "⚠️ Gemini API request timed out."
         except Exception as exc:
-            return f"⚠️ Groq API connection error: {exc}"
+            return f"⚠️ Gemini API connection error: {exc}"
 
     def _call_ollama(self, messages: list[dict]) -> str:
         """Call Ollama LLM (local edge inference)."""

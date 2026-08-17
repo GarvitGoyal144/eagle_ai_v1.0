@@ -41,10 +41,10 @@ class Settings:
     CLIP_MODEL = os.getenv("CLIP_MODEL", "MobileCLIP2-S0")
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
-    # Default to groq (free cloud LLM) — NOT ollama (local only)
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+    LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+    # Default to gemini (free cloud LLM) — NOT ollama (local only)
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     # Cloud-powered CLIP feature extraction (0 MB RAM overhead on Render)
     DISABLE_CLIP = os.getenv("DISABLE_CLIP", "false").lower() == "true"
 
