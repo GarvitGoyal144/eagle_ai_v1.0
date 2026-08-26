@@ -175,30 +175,18 @@ class ChatService:
         has_groq = bool(settings.GROQ_API_KEY and settings.GROQ_API_KEY.strip())
         raw_provider = (settings.LLM_PROVIDER or "").strip().lower()
 
-        if has_gemini and (raw_provider == "gemini" or not has_groq):
+        if raw_provider == "gemini" or has_gemini:
             provider = "gemini"
             answer = self._call_gemini(messages)
-        elif has_groq and (raw_provider == "groq" or not has_gemini):
+        elif raw_provider == "groq" or has_groq:
             provider = "groq"
             answer = self._call_groq(messages)
         elif raw_provider == "ollama":
             provider = "ollama"
             answer = self._call_ollama(messages)
-        elif has_gemini:
+        else:
             provider = "gemini"
             answer = self._call_gemini(messages)
-        elif has_groq:
-            provider = "groq"
-            answer = self._call_groq(messages)
-        else:
-            provider = "none"
-            answer = (
-                "⚠️ **Cloud AI API Key Missing**\n\n"
-                "To enable the AI Chat Assistant, please set either:\n"
-                "• `GEMINI_API_KEY=...` (for Google Gemini AI) OR\n"
-                "• `GROQ_API_KEY=...` (for Groq Cloud AI)\n\n"
-                "in your **Render Dashboard → Environment Variables** (or in `.env` locally)."
-            )
 
         # Step 5: Format sources and visual refs
         sources = []
@@ -241,7 +229,8 @@ class ChatService:
 
     def _call_gemini(self, messages: list[dict]) -> str:
         """Call Gemini API (Google Cloud AI inference)."""
-        if not settings.GEMINI_API_KEY:
+        api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
+        if not api_key:
             return (
                 "⚠️ `GEMINI_API_KEY` is not set.\n"
                 "Please add `GEMINI_API_KEY=...` to your Render Dashboard -> Environment to enable AI chat."
@@ -285,11 +274,16 @@ class ChatService:
         if system_instruction:
             body["system_instruction"] = system_instruction
 
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        }
+
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             response = httpx.post(
                 url,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 json=body,
                 timeout=30.0,
             )
@@ -305,7 +299,8 @@ class ChatService:
 
     def _call_groq(self, messages: list[dict]) -> str:
         """Call Groq API (ultra-fast cloud LLM inference)."""
-        if not settings.GROQ_API_KEY:
+        api_key = settings.GROQ_API_KEY.strip() if settings.GROQ_API_KEY else ""
+        if not api_key:
             return (
                 "⚠️ `GROQ_API_KEY` is not set.\n"
                 "Please add `GROQ_API_KEY=...` to your Render Dashboard -> Environment to enable AI chat."
@@ -317,7 +312,7 @@ class ChatService:
             response = httpx.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json={
