@@ -170,15 +170,15 @@ class ChatService:
             question, history, search_results, recent_events
         )
 
-        # Step 4: Smart LLM Provider Selection (Auto-detects available cloud key)
-        raw_provider = (settings.LLM_PROVIDER or "").lower()
-        has_gemini = bool(settings.GEMINI_API_KEY)
-        has_groq = bool(settings.GROQ_API_KEY)
+        # Step 4: Robust Provider Selection (Prioritizes Active API Key)
+        has_gemini = bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip())
+        has_groq = bool(settings.GROQ_API_KEY and settings.GROQ_API_KEY.strip())
+        raw_provider = (settings.LLM_PROVIDER or "").strip().lower()
 
-        if raw_provider == "gemini" or (has_gemini and raw_provider != "groq"):
+        if has_gemini and (raw_provider == "gemini" or not has_groq):
             provider = "gemini"
             answer = self._call_gemini(messages)
-        elif raw_provider == "groq" or (has_groq and raw_provider != "gemini"):
+        elif has_groq and (raw_provider == "groq" or not has_gemini):
             provider = "groq"
             answer = self._call_groq(messages)
         elif raw_provider == "ollama":
@@ -191,8 +191,14 @@ class ChatService:
             provider = "groq"
             answer = self._call_groq(messages)
         else:
-            provider = "ollama"
-            answer = self._call_ollama(messages)
+            provider = "none"
+            answer = (
+                "⚠️ **Cloud AI API Key Missing**\n\n"
+                "To enable the AI Chat Assistant, please set either:\n"
+                "• `GEMINI_API_KEY=...` (for Google Gemini AI) OR\n"
+                "• `GROQ_API_KEY=...` (for Groq Cloud AI)\n\n"
+                "in your **Render Dashboard → Environment Variables** (or in `.env` locally)."
+            )
 
         # Step 5: Format sources and visual refs
         sources = []
@@ -237,7 +243,7 @@ class ChatService:
         """Call Gemini API (Google Cloud AI inference)."""
         if not settings.GEMINI_API_KEY:
             return (
-                "⚠️ `GEMINI_API_KEY` is not set in your environment variables on Render.\n"
+                "⚠️ `GEMINI_API_KEY` is not set.\n"
                 "Please add `GEMINI_API_KEY=...` to your Render Dashboard -> Environment to enable AI chat."
             )
 
@@ -301,7 +307,7 @@ class ChatService:
         """Call Groq API (ultra-fast cloud LLM inference)."""
         if not settings.GROQ_API_KEY:
             return (
-                "⚠️ `GROQ_API_KEY` is not set in your environment variables on Render.\n"
+                "⚠️ `GROQ_API_KEY` is not set.\n"
                 "Please add `GROQ_API_KEY=...` to your Render Dashboard -> Environment to enable AI chat."
             )
 
@@ -345,8 +351,7 @@ class ChatService:
             )
         except httpx.ConnectError:
             return (
-                "⚠️ Cloud AI key not detected.\n\n"
-                "Please add `GEMINI_API_KEY=...` or `GROQ_API_KEY=...` to your Render Dashboard -> Environment to enable instant AI surveillance responses."
+                "⚠️ Cannot connect to local Ollama. Please set `GEMINI_API_KEY` or `GROQ_API_KEY` for cloud AI."
             )
         except httpx.TimeoutException:
             return "⚠️ Ollama timed out loading model. Please try again."
