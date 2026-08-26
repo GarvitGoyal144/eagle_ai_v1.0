@@ -50,9 +50,10 @@ SEARCH MATCHES:
 
 class ChatService:
     """
-    RAG (Retrieval-Augmented Generation) chat service supporting both:
-    1. Local LLM via Ollama (llama3.2)
-    2. Cloud LLM via Gemini API (gemini-3.5-flash-lite)
+    RAG (Retrieval-Augmented Generation) chat service supporting:
+    1. Gemini Cloud LLM (gemini-1.5-flash)
+    2. Groq Cloud LLM (llama-3.1-8b-instant)
+    3. Local LLM via Ollama (llama3.2)
     """
 
     def _get_recent_events(self, session_id: str | None = None, limit: int = 10) -> list[dict]:
@@ -72,7 +73,7 @@ class ChatService:
                 ).sort("timestamp", -1).limit(limit)
             )
         except Exception as exc:
-            print(f"Chat service events query note: {exc}")
+            print(f"Chat service events query note: {exc}", flush=True)
             return []
 
     def _format_events_context(self, events: list[dict]) -> str:
@@ -152,15 +153,12 @@ class ChatService:
         Full RAG pipeline: retrieve context → build prompt → call LLM.
         """
         history = history or []
-        # Trim history to last 4 turns (2 user, 2 assistant) to save tokens
         if len(history) > 4:
             history = history[-4:]
 
         # Step 1: Hybrid search (Keyword + Semantic)
-        # Note: We limit search to top 3 for token optimization
         search_results = search_service.search(question, top_k=3)
 
-        # Filter search results if session_id is provided
         if session_id:
             search_results = [r for r in search_results if r.get("session_id") == session_id or not r.get("session_id")]
 
@@ -172,11 +170,13 @@ class ChatService:
             question, history, search_results, recent_events
         )
 
-        # Step 4: Call selected LLM Provider (Groq or Ollama)
-        provider = (settings.LLM_PROVIDER or "ollama").lower()
+        # Step 4: Call selected LLM Provider (Gemini, Groq, or Ollama)
+        provider = (settings.LLM_PROVIDER or "gemini").lower()
 
         if provider == "gemini":
             answer = self._call_gemini(messages)
+        elif provider == "groq":
+            answer = self._call_groq(messages)
         else:
             answer = self._call_ollama(messages)
 
@@ -220,40 +220,103 @@ class ChatService:
         }
 
     def _call_gemini(self, messages: list[dict]) -> str:
-        """Call Gemini API (cloud LLM inference)."""
+        """Call Gemini API (Google Cloud AI inference)."""
         if not settings.GEMINI_API_KEY:
             return (
                 "⚠️ `GEMINI_API_KEY` is not set in `.env`.\n"
                 "To use Gemini, add `GEMINI_API_KEY=...` to your `.env` file."
             )
 
-        model = settings.LLM_MODEL or "gemini-3.5-flash-lite"
-        
-        # Convert standard messages to Gemini format
+        raw_model = settings.LLM_MODEL or "gemini-1.5-flash"
+        # Sanitize model name to valid Google API identifier
+        if "3.5" in raw_model or "flash-lite" in raw_model:
+            model = "gemini-1.5-flash"
+        elif "2.0" in raw_model:
+            model = "gemini-2.0-flash"
+        elif "1.5" in raw_model:
+            model = raw_model
+        else:
+            model = "gemini-1.5-flash"
+
+        # Separate system instruction from user/model chat turns
+        system_instruction = None
         gemini_contents = []
+
         for msg in messages:
-            role = "user" if msg["role"] in ["user", "system"] else "model"
-            gemini_contents.append({
-                "role": role,
-                "parts": [{"text": msg["content"]}]
-            })
+            if msg["role"] == "system":
+                system_instruction = {"parts": [{"text": msg["content"]}]}
+            else:
+                role = "user" if msg["role"] == "user" else "model"
+                gemini_contents.append({
+                    "role": role,
+                    "parts": [{"text": msg["content"]}]
+                })
+
+        # Ensure contents is never empty
+        if not gemini_contents and system_instruction:
+            gemini_contents.append({"role": "user", "parts": [{"text": "Summarize surveillance events."}]})
+
+        body = {
+            "contents": gemini_contents,
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 200,
+            }
+        }
+        if system_instruction:
+            body["system_instruction"] = system_instruction
 
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
             response = httpx.post(
                 url,
                 headers={"Content-Type": "application/json"},
-                json={"contents": gemini_contents},
+                json=body,
                 timeout=30.0,
             )
             if response.status_code == 200:
-                return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                data = response.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
             else:
                 return f"⚠️ Gemini API Error ({response.status_code}): {response.text}"
         except httpx.TimeoutException:
             return "⚠️ Gemini API request timed out."
         except Exception as exc:
             return f"⚠️ Gemini API connection error: {exc}"
+
+    def _call_groq(self, messages: list[dict]) -> str:
+        """Call Groq API (ultra-fast cloud LLM inference)."""
+        if not settings.GROQ_API_KEY:
+            return (
+                "⚠️ `GROQ_API_KEY` is not set in `.env`.\n"
+                "To use Groq, add `GROQ_API_KEY=...` to your `.env` file."
+            )
+
+        model = settings.LLM_MODEL if "llama" in settings.LLM_MODEL or "gemma" in settings.LLM_MODEL else "llama-3.1-8b-instant"
+
+        try:
+            response = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 200,
+                },
+                timeout=30.0,
+            )
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"].strip()
+            else:
+                return f"⚠️ Groq API Error ({response.status_code}): {response.text}"
+        except httpx.TimeoutException:
+            return "⚠️ Groq API request timed out."
+        except Exception as exc:
+            return f"⚠️ Groq API connection error: {exc}"
 
     def _call_ollama(self, messages: list[dict]) -> str:
         """Call Ollama LLM (local edge inference)."""
@@ -270,12 +333,10 @@ class ChatService:
         except httpx.ConnectError:
             return (
                 f"⚠️ Cannot connect to Ollama at `{settings.OLLAMA_HOST}`.\n"
-                "Make sure Ollama is running (`ollama serve`) or switch to `LLM_PROVIDER=groq` in `.env`."
+                "Make sure Ollama is running (`ollama serve`) or switch to `LLM_PROVIDER=gemini` in `.env`."
             )
         except httpx.TimeoutException:
-            return (
-                "⚠️ Ollama timed out loading model. Please try again."
-            )
+            return "⚠️ Ollama timed out loading model. Please try again."
         except Exception as exc:
             return f"⚠️ Connection error: {exc}"
 
@@ -284,20 +345,10 @@ class ChatService:
                 error_msg = response.json().get("error", response.text)
             except Exception:
                 error_msg = response.text
-
-            if "memory" in error_msg.lower():
-                return (
-                    f"⚠️ **Out of Memory**: {error_msg}\n\n"
-                    "• Stop the live camera stream first\n"
-                    "• Or switch to `LLM_PROVIDER=groq` in `.env` for instant cloud LLM response."
-                )
-            elif response.status_code == 404:
-                return f"⚠️ Model `{settings.LLM_MODEL}` not found in Ollama. Run `ollama pull {settings.LLM_MODEL}`."
-            else:
-                return f"⚠️ Ollama error ({response.status_code}): {error_msg}"
+            return f"⚠️ Ollama error ({response.status_code}): {error_msg}"
 
         try:
-            return response.json()["message"]["content"]
+            return response.json()["message"]["content"].strip()
         except (KeyError, Exception) as exc:
             return f"⚠️ Failed to parse response: {exc}"
 

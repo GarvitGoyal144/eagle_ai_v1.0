@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from dotenv import load_dotenv
 import os
 
@@ -41,10 +40,12 @@ class Settings:
     CLIP_MODEL = os.getenv("CLIP_MODEL", "MobileCLIP2-S0")
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
-    # Default to gemini (free cloud LLM) — NOT ollama (local only)
+    LLM_MODEL = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+    # Default cloud LLM provider: gemini or groq
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
     # Cloud-powered CLIP feature extraction (0 MB RAM overhead on Render)
     DISABLE_CLIP = os.getenv("DISABLE_CLIP", "false").lower() == "true"
 
@@ -73,8 +74,7 @@ settings = Settings()
 
 # Startup diagnostics
 if not os.getenv("MONGO_URI") and not os.getenv("MONGODB_URI"):
-    print("⚠️  WARNING: MONGO_URI env var not set — using localhost fallback. Set MONGO_URI on Render/cloud.")
+    print("⚠️  WARNING: MONGO_URI env var not set — using localhost fallback. Set MONGO_URI on Render/cloud.", flush=True)
 if not settings.GEMINI_API_KEY and settings.LLM_PROVIDER == "gemini":
-    print("⚠️  WARNING: GEMINI_API_KEY env var not set — chat will fail. Set GEMINI_API_KEY on Render/cloud.")
-print(f"🔧 LLM Provider: {settings.LLM_PROVIDER} | CORS: {settings.CORS_ORIGINS} | CLIP: {'DISABLED (memory safe)' if settings.DISABLE_CLIP else 'ENABLED'}")
-
+    print("⚠️  WARNING: GEMINI_API_KEY env var not set — chat will fail. Set GEMINI_API_KEY on Render/cloud.", flush=True)
+print(f"🔧 LLM Provider: {settings.LLM_PROVIDER} | Model: {settings.LLM_MODEL} | CORS: {settings.CORS_ORIGINS} | CLIP: {'DISABLED (memory safe)' if settings.DISABLE_CLIP else 'ENABLED'}", flush=True)
