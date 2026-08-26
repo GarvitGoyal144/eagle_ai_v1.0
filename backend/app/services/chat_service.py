@@ -236,16 +236,8 @@ class ChatService:
                 "Please add `GEMINI_API_KEY=...` to your Render Dashboard -> Environment to enable AI chat."
             )
 
-        raw_model = settings.LLM_MODEL or "gemini-1.5-flash"
-        # Sanitize model name to valid Google API identifier
-        if "3.5" in raw_model or "flash-lite" in raw_model:
-            model = "gemini-1.5-flash"
-        elif "2.0" in raw_model:
-            model = "gemini-2.0-flash"
-        elif "1.5" in raw_model:
-            model = raw_model
-        else:
-            model = "gemini-1.5-flash"
+        # Use gemini-2.0-flash-lite — free tier, all AI Studio keys, v1beta compatible
+        model = "gemini-2.0-flash-lite"
 
         # Separate system instruction from user/model chat turns
         system_instruction = None
