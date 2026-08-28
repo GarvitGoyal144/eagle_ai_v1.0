@@ -19,6 +19,15 @@ from app.services.event_service import event_service
 async def lifespan(app: FastAPI):
     await mongodb.connect()
     event_service.init_indexes()
+
+    # Pre-load YOLO model at startup so first video request has zero cold-start delay
+    try:
+        from app.services.detection_service import detection_service
+        detection_service._ensure_loaded()
+        print("🚀 YOLO model pre-loaded and ready at startup", flush=True)
+    except Exception as exc:
+        print(f"⚠️ YOLO pre-load note: {exc}", flush=True)
+
     yield
     camera_manager.stop()
     await mongodb.disconnect()

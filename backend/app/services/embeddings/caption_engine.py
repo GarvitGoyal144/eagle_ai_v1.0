@@ -1,9 +1,40 @@
 import json
+import hashlib
 from pathlib import Path
 import numpy as np
 
 from app.config.settings import settings
 from app.services.embeddings.clip_encoder import CLIPEncoder
+
+# Disk cache directory for pre-encoded embedding matrices
+_CACHE_DIR = Path("data/embedding_cache")
+_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _content_hash(items: list[str]) -> str:
+    """MD5 hash of the captions list — used to invalidate cache if captions change."""
+    return hashlib.md5("|".join(items).encode()).hexdigest()[:12]
+
+
+def _load_cache(name: str, content_hash: str) -> np.ndarray | None:
+    path = _CACHE_DIR / f"{name}_{content_hash}.npy"
+    if path.exists():
+        try:
+            vec = np.load(str(path))
+            print(f"⚡ Loaded cached {name} embeddings ({len(vec)} vectors) from disk", flush=True)
+            return vec
+        except Exception:
+            pass
+    return None
+
+
+def _save_cache(name: str, content_hash: str, matrix: np.ndarray):
+    try:
+        path = _CACHE_DIR / f"{name}_{content_hash}.npy"
+        np.save(str(path), matrix)
+        print(f"💾 Cached {name} embeddings ({len(matrix)} vectors) to disk", flush=True)
+    except Exception as e:
+        print(f"⚠️ Cache save warning: {e}", flush=True)
 
 
 # Standard visual attributes for YOLO detection crops
@@ -116,13 +147,27 @@ class CaptionEngine:
             except Exception as exc:
                 print(f"Dataset loading note: {exc}", flush=True)
 
-        # ── 3. Pre-encode caption text vectors ──
-        caption_vectors = [encoder.encode_text(c) for c in self._captions]
-        self._caption_matrix = np.array(caption_vectors)  # shape (N, 512)
+        # ── 3. Pre-encode caption text vectors (with disk cache) ──
+        cap_hash = _content_hash(self._captions)
+        cached_captions = _load_cache("captions", cap_hash)
+        if cached_captions is not None:
+            self._caption_matrix = cached_captions
+        else:
+            print(f"Computing {len(self._captions)} caption embeddings via HF API...", flush=True)
+            caption_vectors = [encoder.encode_text(c) for c in self._captions]
+            self._caption_matrix = np.array(caption_vectors)
+            _save_cache("captions", cap_hash, self._caption_matrix)
 
-        # ── 4. Pre-encode visual attribute vectors ──
-        attribute_vectors = [encoder.encode_text(a) for a in self._attribute_labels]
-        self._attribute_matrix = np.array(attribute_vectors)  # shape (M, 512)
+        # ── 4. Pre-encode visual attribute vectors (with disk cache) ──
+        attr_hash = _content_hash(self._attribute_labels)
+        cached_attrs = _load_cache("attributes", attr_hash)
+        if cached_attrs is not None:
+            self._attribute_matrix = cached_attrs
+        else:
+            print(f"Computing {len(self._attribute_labels)} attribute embeddings via HF API...", flush=True)
+            attribute_vectors = [encoder.encode_text(a) for a in self._attribute_labels]
+            self._attribute_matrix = np.array(attribute_vectors)
+            _save_cache("attributes", attr_hash, self._attribute_matrix)
 
         self._loaded = True
         print("✅ Visual Caption & Attribute Engine pre-encoded and ready (0ms runtime math)", flush=True)

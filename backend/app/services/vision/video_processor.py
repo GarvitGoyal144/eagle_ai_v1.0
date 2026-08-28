@@ -70,21 +70,34 @@ class VideoProcessor:
         class_counts: Dict[str, int] = {}
         all_events: List[Dict[str, Any]] = []
 
-        for sample_idx, frame_idx in enumerate(sampled_indices, 1):
+        # ── Phase 1: Read all sampled frames from disk ──
+        frames_data = []  # list of (frame_idx, frame)
+        for frame_idx in sampled_indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
-            if not ret or frame is None:
-                continue
+            if ret and frame is not None:
+                frames_data.append((frame_idx, frame))
 
+        cap.release()
+        gc.collect()
+
+        if not frames_data:
+            log(f"⚠️ No frames could be read from {filename}")
+            return {}
+
+        log(f"📦 Read {len(frames_data)} frames — running single batch YOLO inference...")
+
+        # ── Phase 2: Batch YOLO detection (one model call for all frames) ──
+        frames_list = [f for _, f in frames_data]
+        batch_detections = detection_service.detect_batch(frames_list)
+        del frames_list
+        gc.collect()
+
+        log(f"✅ Batch YOLO complete — processing events...")
+
+        # ── Phase 3: Process events and update progress ──
+        for sample_idx, ((frame_idx, frame), detections) in enumerate(zip(frames_data, batch_detections), 1):
             timestamp_sec = round(frame_idx / fps, 2)
-
-            # --- YOLO Detection ---
-            try:
-                detections = detection_service.detect(frame)
-            except Exception as exc:
-                log(f"⚠️ Detection error at frame {frame_idx}: {exc}")
-                del frame
-                continue
 
             total_detections += len(detections)
             for d in detections:
@@ -92,7 +105,6 @@ class VideoProcessor:
                 cls_name = d["class_name"]
                 class_counts[cls_name] = class_counts.get(cls_name, 0) + 1
 
-            # --- Event Generation ---
             try:
                 events = event_engine.process(detections)
             except Exception as exc:
@@ -107,7 +119,7 @@ class VideoProcessor:
 
             del frame
 
-            # Update live progress state smoothly
+            # Update live progress
             elapsed = round(time.time() - start_time, 1)
             pct = min(98, max(5, int((sample_idx / total_samples) * 100)))
             progress_store[filename] = {
@@ -121,7 +133,8 @@ class VideoProcessor:
                 "step": f"Frame {frame_idx}/{total_frames} • {len(unique_tracks)} objects detected",
             }
 
-        cap.release()
+        del frames_data
+        del batch_detections
         gc.collect()
 
         # Save all generated events in one single fast batch
