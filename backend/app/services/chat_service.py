@@ -236,8 +236,8 @@ class ChatService:
                 "Please add `GEMINI_API_KEY=...` to your Render Dashboard -> Environment to enable AI chat."
             )
 
-        # Use gemini-2.0-flash-lite — free tier, all AI Studio keys, v1beta compatible
-        model = "gemini-2.0-flash-lite"
+        # Use gemini-2.5-flash-lite — free tier, all AI Studio keys, v1beta compatible
+        model = "gemini-2.5-flash-lite"
 
         # Separate system instruction from user/model chat turns
         system_instruction = None
