@@ -128,7 +128,20 @@ def process_video(req: ProcessRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="Video file not found")
 
     import uuid
+    from app.services.vision.video_processor import progress_store
     session_id = str(uuid.uuid4())
+
+    # Pre-initialize progress so frontend polling sees 'processing' immediately
+    progress_store[req.filename] = {
+        "status": "processing",
+        "progress": 5,
+        "current_frame": 0,
+        "total_frames": 0,
+        "detections": 0,
+        "unique_tracks": 0,
+        "elapsed_sec": 0.0,
+        "step": "Starting YOLO surveillance analysis...",
+    }
 
     def _run_full_pipeline(video_path_str: str, filename: str, sid: str):
         """Run YOLO + CLIP in background — no HTTP timeout risk."""
@@ -147,8 +160,8 @@ def process_video(req: ProcessRequest, background_tasks: BackgroundTasks):
         except Exception as e:
             print(f"❌ [BG] Pipeline failed for {filename}: {e}", flush=True)
             traceback.print_exc()
-            from app.services.vision.video_processor import progress_store
-            progress_store[filename] = {
+            from app.services.vision.video_processor import progress_store as ps
+            ps[filename] = {
                 "status": "error",
                 "progress": 0,
                 "step": f"Processing failed: {e}",
