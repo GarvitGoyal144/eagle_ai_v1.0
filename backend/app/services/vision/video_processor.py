@@ -25,10 +25,11 @@ class VideoProcessor:
     Processes video in 1-3 seconds using direct frame seeking and bulk DB operations.
     """
 
-    def process(self, video_path: str, filename: str) -> Dict[str, Any]:
+    def process(self, video_path: str, filename: str, session_id: str | None = None) -> Dict[str, Any]:
         log(f"🎬 Starting ultra-fast YOLO analysis for {filename}...")
         start_time = time.time()
-        session_id = str(uuid.uuid4())
+        if not session_id:
+            session_id = str(uuid.uuid4())
 
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():

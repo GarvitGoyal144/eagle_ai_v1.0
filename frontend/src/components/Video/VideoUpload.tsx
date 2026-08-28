@@ -69,7 +69,7 @@ function VideoUpload({ onInsightsReady }: Props) {
         };
     }, []);
 
-    const startProgressPolling = (filename: string) => {
+    const startProgressPolling = (filename: string, onComplete: (insights: any) => void) => {
         if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
         }
@@ -83,11 +83,21 @@ function VideoUpload({ onInsightsReady }: Props) {
                         ...res.data,
                     }));
 
-                    if (res.data.status === "completed" || res.data.status === "error") {
+                    if (res.data.status === "completed") {
                         if (pollIntervalRef.current) {
                             clearInterval(pollIntervalRef.current);
                             pollIntervalRef.current = null;
                         }
+                        // Read insights from the progress store when complete
+                        onComplete(res.data.insights || {});
+                    } else if (res.data.status === "error") {
+                        if (pollIntervalRef.current) {
+                            clearInterval(pollIntervalRef.current);
+                            pollIntervalRef.current = null;
+                        }
+                        setErrorMessage(res.data.step || "Processing failed");
+                        setProgressState((prev) => ({ ...prev, status: "error" }));
+                        setUploading(false);
                     }
                 }
             } catch {
@@ -121,37 +131,34 @@ function VideoUpload({ onInsightsReady }: Props) {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
-            // Step 2: Start polling live progress
+            // Step 2: Start polling — will call onComplete when status === 'completed'
             setProgressState((prev) => ({
                 ...prev,
                 status: "processing",
                 progress: 10,
                 step: "Initializing YOLO neural network...",
             }));
-            startProgressPolling(file.name);
 
-            // Step 3: Trigger process
-            const res = await api.post<VideoInsights>("/video/process", {
+            startProgressPolling(file.name, (insights) => {
+                setProgressState({
+                    status: "completed",
+                    progress: 100,
+                    current_frame: insights.total_frames_sampled || 0,
+                    total_frames: insights.total_frames_sampled || 0,
+                    detections: insights.total_detections || 0,
+                    unique_tracks: insights.unique_tracks || 0,
+                    elapsed_sec: insights.processing_time_seconds || 0,
+                    step: "Surveillance intelligence analysis complete!",
+                });
+                onInsightsReady(insights, insights.session_id);
+                setUploading(false);
+            });
+
+            // Step 3: Trigger process — returns immediately, pipeline runs in background
+            await api.post<{ status: string; session_id: string }>("/video/process", {
                 filename: file.name,
             });
 
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
-                pollIntervalRef.current = null;
-            }
-
-            setProgressState({
-                status: "completed",
-                progress: 100,
-                current_frame: res.data.total_frames_sampled || 0,
-                total_frames: res.data.total_frames_sampled || 0,
-                detections: res.data.total_detections || 0,
-                unique_tracks: res.data.unique_tracks || 0,
-                elapsed_sec: res.data.processing_time_seconds || 0,
-                step: "Surveillance intelligence analysis complete!",
-            });
-
-            onInsightsReady(res.data, res.data.session_id);
         } catch (err: any) {
             console.error("Failed to process video:", err);
             if (pollIntervalRef.current) {
@@ -165,7 +172,6 @@ function VideoUpload({ onInsightsReady }: Props) {
                 status: "error",
                 step: "Processing encountered an error",
             }));
-        } finally {
             setUploading(false);
         }
     };

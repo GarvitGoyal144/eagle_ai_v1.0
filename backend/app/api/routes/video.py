@@ -116,8 +116,9 @@ def _run_clip_embeddings_background(video_path: str, filename: str, session_id: 
 @router.post("/process")
 def process_video(req: ProcessRequest, background_tasks: BackgroundTasks):
     """
-    Phase 1: Run YOLO object detection locally (fast, <15s on Render CPU).
-    Phase 2: Run CLIP semantic scene embedding in the background after response is returned.
+    Immediately returns a session_id and starts YOLO + CLIP processing
+    in the background. Frontend polls /video/progress/{filename} for status
+    and reads insights from there when status == 'completed'.
     """
     print(f"📥 /video/process called for: {req.filename}", flush=True)
 
@@ -126,27 +127,45 @@ def process_video(req: ProcessRequest, background_tasks: BackgroundTasks):
         print(f"❌ Video file not found: {video_path}", flush=True)
         raise HTTPException(status_code=404, detail="Video file not found")
 
-    try:
-        from app.services.vision.video_processor import video_processor
-        print(f"🚀 Starting YOLO detection phase...", flush=True)
-        insights = video_processor.process(str(video_path), req.filename)
-        print(f"✅ YOLO phase complete. Scheduling semantic embedding...", flush=True)
+    import uuid
+    session_id = str(uuid.uuid4())
 
-        # Schedule CLIP background embedding — happens after we respond to the browser
-        if not settings.DISABLE_CLIP:
-            background_tasks.add_task(
-                _run_clip_embeddings_background,
-                str(video_path),
-                req.filename,
-                insights.get("session_id", ""),
-            )
+    def _run_full_pipeline(video_path_str: str, filename: str, sid: str):
+        """Run YOLO + CLIP in background — no HTTP timeout risk."""
+        try:
+            from app.services.vision.video_processor import video_processor
+            print(f"🚀 [BG] Starting YOLO detection for {filename}...", flush=True)
+            insights = video_processor.process(video_path_str, filename, sid)
+            print(f"✅ [BG] YOLO complete for {filename}. Starting CLIP...", flush=True)
 
-        return insights
+            if not settings.DISABLE_CLIP:
+                _run_clip_embeddings_background(
+                    video_path_str,
+                    filename,
+                    insights.get("session_id", sid),
+                )
+        except Exception as e:
+            print(f"❌ [BG] Pipeline failed for {filename}: {e}", flush=True)
+            traceback.print_exc()
+            from app.services.vision.video_processor import progress_store
+            progress_store[filename] = {
+                "status": "error",
+                "progress": 0,
+                "step": f"Processing failed: {e}",
+            }
 
-    except Exception as e:
-        tb = traceback.format_exc()
-        print(f"❌ /video/process CRASHED with {type(e).__name__}:", flush=True)
-        print(tb, flush=True)
-        sys.stdout.flush()
-        sys.stderr.flush()
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+    background_tasks.add_task(
+        _run_full_pipeline,
+        str(video_path),
+        req.filename,
+        session_id,
+    )
+
+    print(f"⚡ /video/process returned immediately — pipeline running in background", flush=True)
+    return {
+        "status": "started",
+        "filename": req.filename,
+        "session_id": session_id,
+        "message": "Processing started. Poll /video/progress/{filename} for updates.",
+    }
+
