@@ -5,6 +5,7 @@ import cv2
 import uuid
 from typing import Dict, Any, List
 
+from app.config.settings import settings
 from app.services.detection_service import detection_service
 from app.services.event_engine import event_engine
 from app.services.event_service import event_service
@@ -12,9 +13,10 @@ from app.services.event_service import event_service
 # Global in-memory progress tracker accessible by API route
 progress_store: Dict[str, Dict[str, Any]] = {}
 
-# Mini-batch size: process this many frames at a time to stay within 512MB RAM on Render
-# Each 1080p frame ≈ 6MB; 8 frames ≈ 48MB — safe alongside YOLO's ~200MB
-MINI_BATCH_SIZE = 8
+# Mini-batch size: 4 frames at a time — safe on Render's 512MB RAM
+# Each frame pre-resized to inference_size: 480×480×3 = ~0.7MB
+# 4 frames = ~2.8MB vs 4 × 1080p = ~25MB without resize
+MINI_BATCH_SIZE = 4
 
 
 def log(msg: str):
@@ -83,10 +85,14 @@ class VideoProcessor:
 
             # Read this mini-batch of frames
             batch_frames = []
+            # Read and immediately resize to inference size to minimize RAM
+            # (e.g. 1080p frame = 6MB → 480p = 0.7MB — 8x reduction)
+            infer_size = settings.INFERENCE_SIZE
             for frame_idx in batch_indices:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
                 ret, frame = cap.read()
                 if ret and frame is not None:
+                    frame = cv2.resize(frame, (infer_size, infer_size))
                     batch_frames.append((frame_idx, frame))
 
             if not batch_frames:
