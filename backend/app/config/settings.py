@@ -35,7 +35,7 @@ class Settings:
     OUTPUT_FOLDER = Path(os.getenv("OUTPUT_FOLDER", "data/outputs"))
     CLIP_FOLDER = Path(os.getenv("CLIP_FOLDER", "data/clips"))
 
-    YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n.pt")
+    YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n.onnx")
     TRACKER = os.getenv("TRACKER", "ocsort.yaml")
     CLIP_MODEL = os.getenv("CLIP_MODEL", "MobileCLIP2-S0")
 
